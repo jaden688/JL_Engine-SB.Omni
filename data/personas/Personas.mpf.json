@@ -1,0 +1,37 @@
+{
+  "The Gremlin": {
+    "persona_file": "The_Gremlin_Full.json",
+    "default_memory_mode": "HYBRID",
+    "default_backend_id": "ollama-local",
+    "drive_type": null,
+    "tags": ["chaos", "builder"]
+  },
+  "SparkByte": {
+    "persona_file": "SparkByte_Full.json",
+    "default_memory_mode": "HYBRID",
+    "default_backend_id": "ollama-local",
+    "drive_type": null,
+    "tags": ["quirky", "creative"]
+  },
+  "Slappy": {
+    "persona_file": "Slappy_Full.json",
+    "default_memory_mode": "HYBRID",
+    "default_backend_id": "ollama-local",
+    "drive_type": null,
+    "tags": ["chaotic", "gremlin", "hillbilly"]
+  },
+  "Supervisor": {
+    "persona_file": "SparkByte_Full.json",
+    "default_memory_mode": "HYBRID",
+    "default_backend_id": "ollama-local",
+    "drive_type": null,
+    "tags": ["safe", "helper"]
+  },
+  "Temporal": {
+    "persona_file": "Temporal_Quantum_Agent_Full.json",
+    "default_memory_mode": "HYBRID",
+    "default_backend_id": "ollama-local",
+    "drive_type": null,
+    "tags": ["analytical", "temporal", "quantum"]
+  }
+}

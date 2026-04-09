@@ -1,0 +1,132 @@
+{
+  "prompt": "unseen vision radar, emotional weather, hidden causality, ripples in the glass",
+  "width": 96,
+  "height": 96,
+  "base_steps": 72,
+  "out_dir": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f",
+  "cases": [
+    {
+      "case": "balanced-field",
+      "title": "Balanced Field",
+      "description": "Baseline unseen-vision render with the hub and ring held in balance.",
+      "files": {
+        "rgb": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-balanced-field.png",
+        "delay": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-balanced-field-delay.png",
+        "red": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-balanced-field-red.png",
+        "green": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-balanced-field-green.png",
+        "blue": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-balanced-field-blue.png",
+        "source_map": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-balanced-field-sources.png"
+      },
+      "meta_path": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-balanced-field.json",
+      "pixel_stats": {
+        "brightness_mean": 0.5002714801198276,
+        "delay_mean": 0.606113834422658,
+        "red_mean": 0.5185376668028322,
+        "green_mean": 0.4953546262254902,
+        "blue_mean": 0.4869221473311547,
+        "spectral_split": 0.06048347290305011
+      },
+      "tuning": {
+        "energy": 1.0,
+        "delay_gain": 1.0,
+        "structure_gain": 1.0,
+        "spectral_tilt": 0.0,
+        "ring_scale": 1.0
+      }
+    },
+    {
+      "case": "delay-oracle",
+      "title": "Delay Oracle",
+      "description": "Pushes the hidden delay layer harder so arrival-order starts steering the scene.",
+      "files": {
+        "rgb": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-delay-oracle.png",
+        "delay": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-delay-oracle-delay.png",
+        "red": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-delay-oracle-red.png",
+        "green": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-delay-oracle-green.png",
+        "blue": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-delay-oracle-blue.png",
+        "source_map": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-delay-oracle-sources.png"
+      },
+      "meta_path": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-delay-oracle.json",
+      "pixel_stats": {
+        "brightness_mean": 0.5049211090686291,
+        "delay_mean": 0.6884403935185185,
+        "red_mean": 0.5317848754084967,
+        "green_mean": 0.5077669696350763,
+        "blue_mean": 0.47521148216230935,
+        "spectral_split": 0.06743685321350762
+      },
+      "tuning": {
+        "energy": 0.94,
+        "delay_gain": 1.8,
+        "structure_gain": 0.92,
+        "spectral_tilt": 0.18,
+        "ring_scale": 0.96
+      }
+    },
+    {
+      "case": "structure-lock",
+      "title": "Structure Lock",
+      "description": "Leans into lensing and composition to see whether the form stabilizes first.",
+      "files": {
+        "rgb": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-structure-lock.png",
+        "delay": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-structure-lock-delay.png",
+        "red": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-structure-lock-red.png",
+        "green": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-structure-lock-green.png",
+        "blue": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-structure-lock-blue.png",
+        "source_map": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-structure-lock-sources.png"
+      },
+      "meta_path": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-structure-lock.json",
+      "pixel_stats": {
+        "brightness_mean": 0.5229268790849664,
+        "delay_mean": 0.6190767973856209,
+        "red_mean": 0.51989549291939,
+        "green_mean": 0.5210265182461874,
+        "blue_mean": 0.5278586260893247,
+        "spectral_split": 0.04081988698257081
+      },
+      "tuning": {
+        "energy": 1.05,
+        "delay_gain": 0.82,
+        "structure_gain": 1.65,
+        "spectral_tilt": -0.12,
+        "ring_scale": 0.84
+      }
+    },
+    {
+      "case": "spectral-echo",
+      "title": "Spectral Echo",
+      "description": "Separates channel personalities so the field reveals color-phase drift.",
+      "files": {
+        "rgb": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-spectral-echo.png",
+        "delay": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-spectral-echo-delay.png",
+        "red": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-spectral-echo-red.png",
+        "green": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-spectral-echo-green.png",
+        "blue": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-spectral-echo-blue.png",
+        "source_map": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-spectral-echo-sources.png"
+      },
+      "meta_path": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-spectral-echo.json",
+      "pixel_stats": {
+        "brightness_mean": 0.47808088802650833,
+        "delay_mean": 0.6467528764978213,
+        "red_mean": 0.5622417109204793,
+        "green_mean": 0.4830639808006536,
+        "blue_mean": 0.3889369723583878,
+        "spectral_split": 0.17720077614379084
+      },
+      "tuning": {
+        "energy": 1.12,
+        "delay_gain": 1.08,
+        "structure_gain": 1.0,
+        "spectral_tilt": 0.78,
+        "ring_scale": 1.14
+      }
+    }
+  ],
+  "highlights": {
+    "most_delay_driven": "delay-oracle",
+    "most_structural": "structure-lock",
+    "most_spectral": "spectral-echo"
+  },
+  "manifest_path": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-bench.json",
+  "report_path": "C:\\JulianMetaMorph\\data\\live\\bench\\b63f801de87f\\index.html"
+}

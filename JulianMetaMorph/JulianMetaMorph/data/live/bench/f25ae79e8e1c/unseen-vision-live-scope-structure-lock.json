@@ -1,0 +1,123 @@
+{
+  "prompt": "unseen vision live scope",
+  "seed": 5343377144371154717,
+  "width": 72,
+  "height": 72,
+  "steps": 54,
+  "tuning": {
+    "energy": 1.05,
+    "delay_gain": 0.82,
+    "structure_gain": 1.65,
+    "spectral_tilt": -0.12,
+    "ring_scale": 0.84
+  },
+  "layers": [
+    "R",
+    "G",
+    "B",
+    "D"
+  ],
+  "delay_role": "arrival-order, damping, and phase modulation",
+  "layout": "hub-and-ring splash garden",
+  "modules": [
+    "core",
+    "style",
+    "detail",
+    "lighting"
+  ],
+  "sources": [
+    {
+      "token": "unseen vision live scope",
+      "module": "core",
+      "x": 36,
+      "y": 36,
+      "radius": 8,
+      "period": 9,
+      "phase": 0,
+      "strength": 1.47,
+      "r_bias": 0.9068,
+      "g_bias": 0.8752,
+      "b_bias": 1.0132,
+      "delay_bias": 1.1
+    },
+    {
+      "token": "unseen",
+      "module": "style",
+      "x": 49,
+      "y": 36,
+      "radius": 7,
+      "period": 11,
+      "phase": 3,
+      "strength": 1.604235294117647,
+      "r_bias": 0.9547764705882353,
+      "g_bias": 0.5386352941176471,
+      "b_bias": 0.36130196078431376,
+      "delay_bias": 0.8452941176470589
+    },
+    {
+      "token": "vision",
+      "module": "detail",
+      "x": 36,
+      "y": 54,
+      "radius": 7,
+      "period": 8,
+      "phase": 2,
+      "strength": 0.9791764705882354,
+      "r_bias": 0.3085019607843138,
+      "g_bias": 0.6390274509803922,
+      "b_bias": 0.6969882352941177,
+      "delay_bias": 0.7817647058823529
+    },
+    {
+      "token": "live",
+      "module": "lighting",
+      "x": 14,
+      "y": 36,
+      "radius": 6,
+      "period": 11,
+      "phase": 3,
+      "strength": 1.2680294117647057,
+      "r_bias": 0.5469333333333334,
+      "g_bias": 0.22490980392156865,
+      "b_bias": 0.3330666666666667,
+      "delay_bias": 1.0570588235294118
+    },
+    {
+      "token": "scope",
+      "module": "core",
+      "x": 36,
+      "y": 23,
+      "radius": 7,
+      "period": 11,
+      "phase": 0,
+      "strength": 1.5000588235294117,
+      "r_bias": 0.7477176470588236,
+      "g_bias": 0.8805960784313727,
+      "b_bias": 0.9887529411764706,
+      "delay_bias": 1.0005882352941178
+    }
+  ],
+  "output_files": {
+    "rgb": "C:\\JulianMetaMorph\\data\\live\\bench\\f25ae79e8e1c\\unseen-vision-live-scope-structure-lock.png",
+    "delay": "C:\\JulianMetaMorph\\data\\live\\bench\\f25ae79e8e1c\\unseen-vision-live-scope-structure-lock-delay.png",
+    "red": "C:\\JulianMetaMorph\\data\\live\\bench\\f25ae79e8e1c\\unseen-vision-live-scope-structure-lock-red.png",
+    "green": "C:\\JulianMetaMorph\\data\\live\\bench\\f25ae79e8e1c\\unseen-vision-live-scope-structure-lock-green.png",
+    "blue": "C:\\JulianMetaMorph\\data\\live\\bench\\f25ae79e8e1c\\unseen-vision-live-scope-structure-lock-blue.png",
+    "source_map": "C:\\JulianMetaMorph\\data\\live\\bench\\f25ae79e8e1c\\unseen-vision-live-scope-structure-lock-sources.png"
+  },
+  "amplitude_stats": {
+    "r_max_abs": 6.326807364967362,
+    "g_max_abs": 5.763957113795287,
+    "b_max_abs": 7.433098973955136,
+    "d_max_abs": 10.209070409429096
+  },
+  "pixel_stats": {
+    "brightness_mean": 0.46619916485111823,
+    "delay_mean": 0.5854363350278383,
+    "red_mean": 0.46503041031227305,
+    "green_mean": 0.46153625030259016,
+    "blue_mean": 0.4720308339385137,
+    "spectral_split": 0.037041575889615104
+  },
+  "source_count": 5
+}

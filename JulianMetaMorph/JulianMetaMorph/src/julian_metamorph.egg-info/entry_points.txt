@@ -1,0 +1,2 @@
+[console_scripts]
+julian-metamorph = julian_metamorph.cli:main

@@ -1,0 +1,1666 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>JL_OS // SPARKBYTE</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{--bg:rgba(8,8,16,0.78);--bg2:rgba(12,12,22,0.72);--bg3:rgba(18,18,30,0.68);--border:rgba(80,80,140,0.28);--green:#00ff99;--pink:#ff00ff;--blue:#0088ff;--yellow:#f1c40f;--text:#ccc;--dim:#555;--glass:rgba(255,255,255,0.04);--glass-border:rgba(255,255,255,0.09);}
+body{background:transparent;color:var(--green);font-family:'Consolas','Courier New',monospace;height:100vh;display:flex;flex-direction:column;overflow:hidden;position:relative;z-index:1;}
+::selection{background:var(--pink);color:#000;}
+::-webkit-scrollbar{width:6px;height:6px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.12);border-radius:3px;}
+
+/* --- TASKBAR --- */
+#taskbar{height:36px;background:rgba(6,6,18,0.88);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid var(--glass-border);display:flex;align-items:center;padding:0 12px;gap:12px;font-size:11px;letter-spacing:1px;flex-shrink:0;z-index:100;}
+#taskbar .logo{color:var(--pink);font-weight:bold;font-size:12px;text-shadow:0 0 14px rgba(255,0,255,0.55);}
+#taskbar select{background:rgba(0,0,0,0.5);color:var(--green);border:1px solid var(--glass-border);border-radius:3px;padding:2px 6px;font-family:inherit;font-size:11px;outline:none;cursor:pointer;backdrop-filter:blur(8px);}
+#taskbar select:hover{border-color:var(--green);}
+.tb-sep{width:1px;height:18px;background:#333;}
+.tb-label{color:var(--dim);font-size:10px;text-transform:uppercase;}
+#gear-val{color:var(--pink);font-weight:bold;}
+#mode-val{color:var(--blue);font-size:10px;}
+.tb-spacer{flex:1;}
+#mode-toggle{cursor:pointer;padding:2px 8px;border-radius:3px;border:1px solid #333;font-family:inherit;font-size:10px;letter-spacing:1px;font-weight:bold;transition:0.15s;background:var(--bg);color:var(--green);}
+#mode-toggle:hover{border-color:var(--green);}
+#mode-toggle.chat-only{background:#1a0a00;color:#ff8800;border-color:#ff8800;}
+
+/* --- MAIN LAYOUT --- */
+#main{flex:1;display:flex;overflow:hidden;}
+
+/* --- SIDEBAR (file tree) --- */
+#sidebar{width:220px;min-width:140px;background:rgba(8,8,18,0.65);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-right:1px solid var(--glass-border);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;}
+#sidebar-header{padding:8px 10px;font-size:10px;letter-spacing:2px;color:var(--dim);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
+#sidebar-header .sb-actions{display:flex;gap:6px;}
+#sidebar-header .sb-btn{background:none;border:1px solid #333;color:var(--dim);width:20px;height:20px;border-radius:3px;cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;transition:0.15s;}
+#sidebar-header .sb-btn:hover{border-color:var(--green);color:var(--green);}
+#search-bar{padding:4px 8px;border-bottom:1px solid var(--border);display:none;}
+#search-bar.visible{display:block;}
+#search-bar input{width:100%;background:var(--bg2);border:1px solid #333;border-radius:3px;padding:4px 8px;color:var(--text);font-family:inherit;font-size:11px;outline:none;}
+#search-bar input:focus{border-color:var(--green);}
+#tree-wrap{flex:1;overflow-y:auto;padding:4px 0;}
+.tree-dir{padding:3px 10px;color:var(--blue);font-size:11px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:4px;}
+.tree-dir:hover{background:rgba(0,136,255,0.08);}
+.tree-dir .arrow{font-size:8px;transition:transform 0.15s;display:inline-block;}
+.tree-dir .arrow.open{transform:rotate(90deg);}
+.tree-item{padding:2px 10px 2px 22px;font-size:11px;color:#888;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:0.1s;}
+.tree-item:hover{background:rgba(0,255,153,0.06);color:var(--green);}
+.tree-item.active{color:var(--pink);background:rgba(255,0,255,0.08);border-left:2px solid var(--pink);padding-left:20px;}
+.tree-item.dirty::after{content:'●';color:var(--yellow);margin-left:6px;font-size:8px;}
+
+/* --- CENTER (editor + terminal) --- */
+#center{flex:1;display:flex;flex-direction:column;min-width:0;}
+
+/* Tab bar */
+#tab-bar{height:30px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:stretch;overflow-x:auto;flex-shrink:0;}
+.etab{padding:0 14px;font-size:11px;color:var(--dim);border-right:1px solid var(--border);display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;transition:0.1s;min-width:0;}
+.etab:hover{color:var(--text);background:rgba(255,255,255,0.03);}
+.etab.active{color:var(--green);background:var(--bg);border-bottom:2px solid var(--green);}
+.etab.dirty .tab-name::after{content:' ●';color:var(--yellow);}
+.etab .tab-close{opacity:0;font-size:13px;color:var(--dim);margin-left:4px;transition:0.1s;}
+.etab:hover .tab-close{opacity:1;}
+.etab .tab-close:hover{color:#f44;}
+
+/* Editor */
+#editor-wrap{flex:1;position:relative;overflow:hidden;}
+#code-editor{width:100%;height:100%;background:var(--bg);color:#e0e0e0;border:none;padding:12px 14px;font-family:'Consolas','Courier New',monospace;font-size:13px;line-height:1.6;resize:none;outline:none;tab-size:4;white-space:pre;overflow:auto;}
+#editor-empty{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--dim);font-size:13px;text-align:center;pointer-events:none;}
+
+/* --- Resizers --- */
+#h-resizer{height:4px;background:var(--border);cursor:ns-resize;flex-shrink:0;}
+#h-resizer:hover{background:var(--green);}
+.v-resizer{width:4px;background:var(--border);cursor:ew-resize;flex-shrink:0;transition:background 0.15s;}
+.v-resizer:hover,.v-resizer.dragging{background:var(--green);}
+
+/* --- TERMINAL --- */
+#terminal-wrap{height:200px;min-height:60px;display:flex;flex-direction:column;background:rgba(0,0,0,0.75);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid var(--glass-border);}
+#term-header{height:26px;background:rgba(8,4,18,0.8);border-bottom:1px solid var(--glass-border);display:flex;align-items:center;padding:0 10px;font-size:10px;letter-spacing:1px;color:var(--dim);gap:8px;flex-shrink:0;}
+#term-header .term-tab{padding:2px 10px;cursor:pointer;border-radius:3px;transition:0.15s;}
+#term-header .term-tab.active{color:var(--green);background:rgba(0,255,153,0.1);}
+#term-header .term-tab:hover{color:var(--green);}
+#terminal{flex:1;overflow-y:auto;padding:8px 12px;font-size:12px;color:var(--green);white-space:pre-wrap;word-break:break-all;}
+.term-line{margin:1px 0;}
+.term-line.err{color:#f44;}
+.term-line.info{color:var(--blue);}
+.term-line.warn{color:var(--yellow);}
+#term-input-wrap{display:flex;align-items:center;border-top:1px solid var(--border);background:var(--bg2);padding:0 10px;flex-shrink:0;}
+#term-prompt{color:var(--pink);font-size:12px;margin-right:6px;white-space:nowrap;}
+#term-input{flex:1;background:transparent;border:none;color:var(--green);font-family:inherit;font-size:12px;padding:6px 0;outline:none;}
+
+/* --- CHAT SIDEBAR --- */
+#chat-panel{width:340px;min-width:200px;border-left:1px solid var(--glass-border);display:flex;flex-direction:column;background:rgba(8,8,18,0.65);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);flex-shrink:0;}
+#chat-panel.collapsed{width:40px;min-width:40px;}
+#chat-header{height:30px;background:rgba(12,4,22,0.75);border-bottom:1px solid var(--glass-border);display:flex;align-items:center;padding:0 10px;font-size:11px;color:var(--pink);letter-spacing:1px;gap:8px;flex-shrink:0;}
+#chat-toggle{cursor:pointer;font-size:14px;color:var(--dim);transition:0.15s;}
+#chat-toggle:hover{color:var(--green);}
+#chat-body{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+#chat{flex:1;overflow-y:auto;padding:10px;}
+.msg{margin:6px 0;padding:8px 12px;border-radius:8px;font-size:12px;line-height:1.5;max-width:95%;word-wrap:break-word;}
+.msg code{background:#111;padding:1px 4px;border-radius:2px;color:var(--green);font-size:11px;}
+.msg pre{background:#111;padding:8px;border-radius:4px;overflow-x:auto;border:1px solid #222;margin:6px 0;font-size:11px;}
+.user{background:rgba(0,80,200,0.18);backdrop-filter:blur(8px);border-right:3px solid var(--blue);margin-left:auto;color:#fff;}
+.spark{background:rgba(120,0,100,0.18);backdrop-filter:blur(8px);border-left:3px solid var(--pink);color:#eee;}
+.tool{color:var(--yellow);font-style:italic;font-size:11px;text-align:center;margin:4px 0;}
+.tool_error{color:#ff6b6b;font-style:italic;font-size:11px;text-align:center;margin:4px 0;}
+/* Thinking bubble */
+.thinking-bubble{background:#0e1a1e;border-left:3px solid #00bcd4;border-radius:4px;margin:4px 0;font-size:11px;color:#80cbc4;overflow:hidden;}
+.thinking-bubble .think-header{display:flex;align-items:center;gap:6px;padding:5px 10px;cursor:pointer;user-select:none;}
+.thinking-bubble .think-header .think-icon{font-size:13px;animation:pulse 1.4s infinite;}
+.thinking-bubble .think-header .think-label{font-weight:bold;letter-spacing:0.04em;flex:1;}
+.thinking-bubble .think-header .think-toggle{color:var(--dim);font-size:10px;}
+.thinking-bubble .think-body{padding:0 10px 6px 10px;white-space:pre-wrap;word-break:break-word;color:#546e7a;font-size:10px;line-height:1.5;display:none;}
+.thinking-bubble.expanded .think-body{display:block;}
+.thinking-bubble.done .think-icon{animation:none;}
+.thinking-bubble.done .think-label{color:#4db6ac;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+#chat-input-wrap{border-top:1px solid var(--glass-border);padding:6px 8px;display:flex;gap:6px;align-items:center;background:rgba(6,6,18,0.75);backdrop-filter:blur(12px);}
+#chat-input-wrap label{cursor:pointer;color:var(--dim);font-size:14px;transition:0.15s;}
+#chat-input-wrap label.has-file{color:var(--green);}
+#chat-input-wrap input[type=file]{display:none;}
+#chat-input{flex:1;background:rgba(255,255,255,0.05);border:1px solid var(--glass-border);border-radius:4px;padding:6px 10px;color:#fff;font-family:inherit;font-size:12px;outline:none;}
+#chat-input:focus{border-color:var(--green);}
+.img-preview{max-width:180px;border-radius:6px;margin-top:6px;border:1px solid #333;}
+
+/* --- STATUS BAR --- */
+#statusbar{height:22px;background:rgba(6,6,16,0.88);backdrop-filter:blur(16px);border-top:1px solid var(--glass-border);display:flex;align-items:center;padding:0 12px;font-size:10px;color:var(--dim);gap:16px;flex-shrink:0;}
+#statusbar .sb-green{color:var(--green);}
+#statusbar .sb-pink{color:var(--pink);}
+
+/* --- CONTEXT MENU --- */
+#ctx-menu{position:fixed;background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:4px 0;font-size:11px;min-width:160px;z-index:999;display:none;box-shadow:0 4px 20px rgba(0,0,0,0.6);}
+#ctx-menu .ctx-item{padding:5px 14px;cursor:pointer;color:var(--text);transition:0.1s;}
+#ctx-menu .ctx-item:hover{background:rgba(0,255,153,0.1);color:var(--green);}
+#ctx-menu .ctx-sep{height:1px;background:var(--border);margin:4px 0;}
+
+/* Search results panel */
+#search-results{display:none;max-height:300px;overflow-y:auto;background:var(--bg2);border-bottom:1px solid var(--border);font-size:11px;}
+#search-results.visible{display:block;}
+.sr-file{color:var(--blue);padding:4px 10px;font-weight:bold;}
+.sr-hit{padding:2px 10px 2px 20px;color:var(--text);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.sr-hit:hover{background:rgba(0,255,153,0.06);color:var(--green);}
+.sr-hit .sr-ln{color:var(--pink);margin-right:8px;}
+
+/* --- SETTINGS MODAL --- */
+#settings-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:1000;display:none;align-items:center;justify-content:center;}
+#settings-overlay.visible{display:flex;}
+#settings-modal{background:rgba(10,10,24,0.88);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid var(--glass-border);border-radius:8px;width:500px;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,0.8);}
+#settings-modal .sm-header{padding:14px 18px;border-bottom:1px solid var(--glass-border);display:flex;align-items:center;justify-content:space-between;font-size:12px;letter-spacing:1px;color:var(--pink);flex-shrink:0;}
+#settings-modal .sm-close{cursor:pointer;color:var(--dim);font-size:16px;transition:0.15s;}
+#settings-modal .sm-close:hover{color:#f44;}
+/* settings tab bar */
+.sm-tabs{display:flex;border-bottom:1px solid var(--glass-border);flex-shrink:0;}
+.sm-tab{padding:8px 20px;font-size:10px;letter-spacing:2px;cursor:pointer;color:var(--dim);border-bottom:2px solid transparent;transition:0.15s;text-transform:uppercase;}
+.sm-tab:hover{color:var(--text);}
+.sm-tab.active{color:var(--green);border-bottom-color:var(--green);}
+/* tab panels */
+.sm-panel{display:none;padding:18px;overflow-y:auto;}
+.sm-panel.active{display:block;}
+#settings-modal .sm-body{padding:18px;overflow-y:auto;}
+.sm-section{margin-bottom:18px;}
+.sm-section label{display:block;font-size:10px;letter-spacing:1px;color:var(--dim);text-transform:uppercase;margin-bottom:6px;}
+.sm-section input[type=text],.sm-section input[type=password]{width:100%;background:rgba(0,0,0,0.4);border:1px solid var(--glass-border);border-radius:4px;padding:8px 12px;color:var(--text);font-family:inherit;font-size:12px;outline:none;transition:0.15s;}
+.sm-section input:focus{border-color:var(--green);}
+.sm-hint{font-size:10px;color:var(--dim);margin-top:4px;}
+.sm-row{display:flex;gap:10px;align-items:center;}
+.sm-row select{background:rgba(0,0,0,0.4);color:var(--green);border:1px solid var(--glass-border);border-radius:4px;padding:8px 12px;font-family:inherit;font-size:12px;outline:none;cursor:pointer;flex:1;}
+.sm-row select:hover{border-color:var(--green);}
+.sm-badge{display:inline-block;padding:2px 8px;border-radius:3px;font-size:10px;letter-spacing:1px;}
+.sm-badge.ok{background:rgba(0,255,153,0.15);color:var(--green);}
+.sm-badge.missing{background:rgba(244,68,68,0.15);color:#f44;}
+.sm-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;padding-top:14px;border-top:1px solid var(--glass-border);}
+.sm-btn{padding:7px 18px;border-radius:4px;font-family:inherit;font-size:11px;letter-spacing:1px;cursor:pointer;transition:0.15s;border:1px solid var(--glass-border);}
+/* ── Telemetry panel ── */
+.tl-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;}
+.tl-card{background:rgba(0,0,0,0.35);border:1px solid var(--glass-border);border-radius:5px;padding:8px 10px;}
+.tl-label{font-size:9px;letter-spacing:2px;color:var(--dim);text-transform:uppercase;margin-bottom:4px;}
+.tl-val{font-size:13px;color:var(--green);font-weight:600;word-break:break-all;}
+.tl-section{margin-bottom:14px;}
+.tl-bar-wrap{height:6px;background:rgba(255,255,255,0.07);border-radius:3px;overflow:hidden;margin:5px 0 3px;}
+.tl-bar{height:100%;background:var(--orange,#ff9900);border-radius:3px;width:0%;transition:width 0.4s ease;}
+.tl-bar.tl-bar-green{background:var(--green);}
+.tl-bar-val{font-size:11px;color:var(--dim);}
+.tl-tool-row{display:flex;align-items:baseline;gap:8px;margin-top:4px;}
+.tl-tool-name{font-size:13px;color:var(--blue,#00cfff);font-weight:600;}
+.tl-tool-ms{font-size:10px;color:var(--dim);}
+.sm-btn.primary{background:var(--green);color:#000;border-color:var(--green);font-weight:bold;}
+.sm-btn.primary:hover{background:#00cc7a;}
+.sm-btn.secondary{background:transparent;color:var(--dim);}
+.sm-btn.secondary:hover{color:var(--text);border-color:var(--text);}
+/* appearance tab controls */
+.ap-row{display:flex;align-items:center;gap:12px;margin-bottom:14px;}
+.ap-row label{font-size:10px;letter-spacing:1px;color:var(--dim);text-transform:uppercase;min-width:110px;flex-shrink:0;}
+.ap-row input[type=range]{flex:1;accent-color:var(--green);cursor:pointer;height:3px;}
+.ap-row .ap-val{font-size:11px;color:var(--green);min-width:52px;text-align:right;}
+.ap-toggle{display:flex;align-items:center;gap:10px;margin-bottom:14px;}
+.ap-toggle label{font-size:10px;letter-spacing:1px;color:var(--dim);text-transform:uppercase;flex:1;}
+.ap-toggle input[type=checkbox]{width:16px;height:16px;accent-color:var(--green);cursor:pointer;}
+.ap-swatch-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
+.ap-swatch{width:32px;height:32px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:0.15s;position:relative;}
+.ap-swatch.selected{border-color:#fff;box-shadow:0 0 10px rgba(255,255,255,0.4);}
+.ap-swatch:hover{transform:scale(1.12);}
+.ap-divider{border:none;border-top:1px solid var(--glass-border);margin:16px 0;}
+.ap-section-label{font-size:10px;letter-spacing:2px;color:var(--pink);text-transform:uppercase;margin-bottom:12px;}
+#bg-canvas{position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none;}
+/* --- TOOL ACTIVE INDICATOR --- */
+#tool-active-bar{display:none;align-items:center;gap:8px;padding:5px 12px;background:rgba(0,200,255,0.07);border-top:1px solid rgba(0,200,255,0.18);font-size:10px;letter-spacing:1px;color:var(--blue);flex-shrink:0;}
+#tool-active-bar.visible{display:flex;}
+#tool-active-bar .tool-spinner{width:10px;height:10px;border:2px solid rgba(0,200,255,0.3);border-top-color:var(--blue);border-radius:50%;animation:spin 0.7s linear infinite;flex-shrink:0;}
+#tool-active-bar .tool-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+#tool-active-bar .tool-timer{color:var(--dim);font-size:9px;flex-shrink:0;}
+/* --- HISTORY MODAL --- */
+#history-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:1000;display:none;align-items:center;justify-content:center;}
+#history-overlay.visible{display:flex;}
+#history-modal{background:rgba(10,10,24,0.92);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid var(--glass-border);border-radius:8px;width:620px;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,0.8);}
+#history-modal .hm-header{padding:14px 18px;border-bottom:1px solid var(--glass-border);display:flex;align-items:center;justify-content:space-between;font-size:12px;letter-spacing:1px;color:var(--pink);flex-shrink:0;}
+#history-modal .hm-close{cursor:pointer;color:var(--dim);font-size:16px;transition:0.15s;}
+#history-modal .hm-close:hover{color:#f44;}
+#history-modal .hm-body{display:flex;flex:1;overflow:hidden;min-height:0;}
+#history-session-list{width:220px;border-right:1px solid var(--glass-border);overflow-y:auto;flex-shrink:0;}
+.hm-session-row{padding:9px 14px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.04);font-size:11px;transition:0.12s;}
+.hm-session-row:hover{background:rgba(255,255,255,0.06);}
+.hm-session-row.active{background:rgba(0,255,153,0.08);border-left:2px solid var(--green);}
+.hm-session-date{font-size:9px;color:var(--dim);letter-spacing:0.5px;}
+.hm-session-events{font-size:9px;color:var(--blue);margin-top:2px;}
+#history-turn-view{flex:1;overflow-y:auto;padding:14px;}
+.hm-turn{margin-bottom:10px;padding:8px 12px;border-radius:5px;font-size:11px;line-height:1.5;}
+.hm-turn.user{background:rgba(255,255,255,0.05);border-left:2px solid var(--pink);}
+.hm-turn.model{background:rgba(0,200,100,0.05);border-left:2px solid var(--green);}
+.hm-turn.model .hm-turn-meta{font-size:9px;color:var(--dim);margin-bottom:4px;}
+.hm-turn.user .hm-turn-meta{font-size:9px;color:var(--dim);margin-bottom:4px;}
+.hm-turn-content{color:var(--text);white-space:pre-wrap;word-break:break-word;}
+.hm-empty{color:var(--dim);font-size:11px;padding:20px;text-align:center;}
+#history-load-btn{display:none;}
+
+/* ----- Global classes ----- */
+.hidden{display:none;}
+.view-pane{flex:1;overflow:hidden;}
+
+/* ── FORGE STREAM PANEL ─────────────────────────────────────────────────────── */
+#forge-panel{display:none;flex:1;flex-direction:column;overflow:hidden;background:var(--bg);}
+#forge-panel.active{display:flex;}
+#forge-header{padding:6px 14px;background:rgba(255,0,255,0.06);border-bottom:1px solid rgba(255,0,255,0.2);display:flex;align-items:center;gap:10px;font-size:11px;flex-shrink:0;}
+#forge-tool-name{color:var(--pink);font-weight:bold;letter-spacing:1px;}
+#forge-status{color:var(--dim);font-size:10px;flex:1;}
+#forge-line-counter{color:var(--dim);font-size:10px;}
+#forge-split{flex:1;display:flex;overflow:hidden;gap:0;}
+#forge-stream-wrap{flex:1;display:flex;flex-direction:column;border-right:1px solid var(--glass-border);overflow:hidden;}
+#forge-stream-label{padding:4px 10px;font-size:9px;letter-spacing:2px;color:var(--dim);background:rgba(0,0,0,0.3);flex-shrink:0;text-transform:uppercase;}
+#forge-stream{flex:1;overflow-y:auto;padding:8px 12px;font-family:'Consolas','Courier New',monospace;font-size:12px;color:#7ecfff;white-space:pre;word-break:break-all;line-height:1.5;}
+.fline{display:block;opacity:0;animation:fadeIn 0.12s ease forwards;}
+@keyframes fadeIn{from{opacity:0;transform:translateX(-4px)}to{opacity:1;transform:none}}
+#forge-editor-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}
+#forge-editor-label{padding:4px 10px;font-size:9px;letter-spacing:2px;color:var(--dim);background:rgba(0,0,0,0.3);flex-shrink:0;display:flex;align-items:center;gap:8px;text-transform:uppercase;}
+#forge-editor-label .fe-badge{padding:1px 6px;border-radius:2px;font-size:9px;background:rgba(255,0,255,0.15);color:var(--pink);border:1px solid rgba(255,0,255,0.3);}
+#forge-editor{flex:1;resize:none;border:none;background:rgba(0,0,0,0.5);color:#e0e0e0;font-family:'Consolas','Courier New',monospace;font-size:12px;padding:10px 14px;outline:none;tab-size:4;line-height:1.6;overflow:auto;}
+#forge-push-bar{padding:6px 12px;background:rgba(0,0,0,0.4);border-top:1px solid var(--glass-border);display:flex;align-items:center;gap:10px;flex-shrink:0;}
+#forge-push-btn{padding:5px 16px;border-radius:4px;background:var(--pink);color:#000;border:none;font-family:inherit;font-size:11px;font-weight:bold;letter-spacing:1px;cursor:pointer;transition:0.15s;opacity:0.4;pointer-events:none;}
+#forge-push-btn.ready{opacity:1;pointer-events:auto;}
+#forge-push-btn.ready:hover{background:#ff44ff;}
+#forge-push-status{font-size:10px;color:var(--dim);flex:1;}
+#forge-clear-btn{padding:4px 10px;border-radius:3px;border:1px solid #333;background:transparent;color:var(--dim);font-family:inherit;font-size:10px;cursor:pointer;transition:0.15s;}
+#forge-clear-btn:hover{border-color:var(--green);color:var(--green);}
+.etab.forge-tab{color:var(--pink);}
+.etab.forge-tab.active{color:var(--pink);border-bottom-color:var(--pink);}
+.etab.forge-tab .forge-dot{display:none;width:6px;height:6px;border-radius:50%;background:var(--pink);animation:pulse 1s ease-in-out infinite;}
+.etab.forge-tab.streaming .forge-dot{display:inline-block;}
+
+</style></head><body>
+<canvas id="bg-canvas"></canvas>
+
+<!-- TASKBAR -->
+<div id="taskbar">
+  <span class="logo">⚡ JL_OS</span>
+  <div class="tb-sep"></div>
+  <span class="tb-label">Persona</span>
+  <select id="persona-select"><option>SparkByte</option></select>
+  <div class="tb-sep"></div>
+  <span class="tb-label">Model</span>
+  <select id="model-select">
+    <optgroup label="── Gemini ──">
+      <option value="gemini-3.1-pro">🔧 Gemini 3.1 Pro</option>
+      <option value="gemini-3.1-flash-lite-preview" selected>🔧 Flash-Lite</option>
+      <option value="gemini-3.1-flash-live">Flash-Live</option>
+      <option value="gemma-4-26b-a4b-it">Gemma 4</option>
+    </optgroup>
+    <optgroup label="── Grok (xAI) ──">
+      <option value="grok-4.20-multi-agent-0309">🔧 Grok 4.20 Multi-Agent ✦</option>
+      <option value="grok-4.20-reasoning">🔧 Grok 4.20 Reasoning ✦</option>
+      <option value="grok-3">🔧 Grok 3</option>
+      <option value="grok-3-fast">🔧 Grok 3 Fast</option>
+      <option value="grok-3-mini">🔧 Grok 3 Mini</option>
+      <option value="grok-3-mini-fast">🔧 Grok 3 Mini Fast</option>
+    </optgroup>
+    <optgroup label="── OpenAI ──">
+      <option value="gpt-4.1">🔧 GPT-4.1</option>
+      <option value="gpt-4o">🔧 GPT-4o</option>
+      <option value="gpt-4o-mini">🔧 GPT-4o Mini</option>
+      <option value="o4-mini">🔧 o4-mini</option>
+    </optgroup>
+    <optgroup label="── Ollama (Local) ──">
+      <option value="ollama:llama3.3">🔧 Llama 3.3</option>
+      <option value="ollama:llama3.2">🔧 Llama 3.2</option>
+      <option value="ollama:mistral">Mistral</option>
+      <option value="ollama:deepseek-r1">DeepSeek R1</option>
+      <option value="ollama:qwen3">🔧 Qwen 3</option>
+      <option value="ollama:phi4">🔧 Phi 4</option>
+    </optgroup>
+    <optgroup label="── Cerebras ──">
+      <option value="llama-4-scout-17b-16e-instruct">🔧 Llama 4 Scout 17B</option>
+      <option value="llama-4-maverick-17b-128e-instruct">🔧 Llama 4 Maverick 17B</option>
+      <option value="llama3.3-70b">🔧 Llama 3.3 70B</option>
+      <option value="qwen-3-32b">🔧 Qwen 3 32B</option>
+      <option value="gpt-oss-120b">🔧 GPT-OSS 120B ✦</option>
+    </optgroup>
+  </select>
+  <div class="tb-sep"></div>
+  <span id="gear-val">LITE_REASONING</span>
+  <span id="mode-val">SASS · HUMAN · BINDING</span>
+  <span class="tb-spacer"></span>
+  <button id="mode-toggle" onclick="toggleEngineMode()" title="Toggle between CHAT (talk only) and ENGINE (full tool access)">⚡ ENGINE</button>
+  <div class="tb-sep"></div>
+  <span style="cursor:pointer;font-size:14px;color:var(--dim);transition:0.15s;" onclick="openSettings()" title="Settings (Ctrl+,)">⚙</span>
+  <span style="cursor:pointer;font-size:12px;color:var(--dim);transition:0.15s;letter-spacing:1px;" onclick="openHistory()" title="Session History">◷ HISTORY</span>
+  <button id="relaunch-btn" onclick="relaunchServer()" title="Relaunch server (reconnects automatically)" style="background:rgba(255,80,0,0.15);border:1px solid rgba(255,80,0,0.35);color:#ff6030;border-radius:3px;padding:1px 7px;font-family:inherit;font-size:10px;cursor:pointer;letter-spacing:1px;transition:0.15s;" onmouseover="this.style.background='rgba(255,80,0,0.28)'" onmouseout="this.style.background='rgba(255,80,0,0.15)'">↺ RELAUNCH</button>
+  <span style="color:var(--dim);font-size:10px;" id="clock"></span>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+  <!-- SIDEBAR -->
+  <div id="sidebar" class="view-pane hidden">
+    <div id="sidebar-header">
+      <span>EXPLORER</span>
+      <span class="sb-actions">
+        <button class="sb-btn" onclick="promptNewFile()" title="New File">+</button>
+        <button class="sb-btn" onclick="promptNewDir()" title="New Folder">📁</button>
+        <button class="sb-btn" onclick="toggleSearch()" title="Search">🔍</button>
+        <button class="sb-btn" onclick="loadFileTree()" title="Refresh">↻</button>
+      </span>
+    </div>
+    <div id="search-bar">
+      <input type="text" id="search-input" placeholder="Search in files..." autocomplete="off">
+    </div>
+    <div id="search-results"></div>
+    <div id="tree-wrap"><div id="tree-content" style="color:var(--dim);padding:10px;font-size:11px;">loading...</div></div>
+  </div>
+
+  <div class="v-resizer" id="sidebar-resizer"></div>
+
+  <!-- CENTER -->
+  <div id="center">
+    <div id="tab-bar"></div>
+    <div id="editor-wrap" class="view-pane">
+      <textarea id="code-editor" spellcheck="false"></textarea>
+      <div id="editor-empty">No file open<br><span style="font-size:11px;color:#333;">Click a file in the explorer or press Ctrl+O</span></div>
+    </div>
+    <!-- FORGE STREAM PANEL -->
+    <div id="forge-panel">
+      <div id="forge-header">
+        <span id="forge-tool-name">— idle —</span>
+        <span id="forge-status">Waiting for forge events…</span>
+        <span id="forge-line-counter"></span>
+      </div>
+      <div id="forge-split">
+        <div id="forge-stream-wrap">
+          <div id="forge-stream-label">Live stream</div>
+          <div id="forge-stream"></div>
+        </div>
+        <div id="forge-editor-wrap">
+          <div id="forge-editor-label">
+            Edit &amp; push back
+            <span class="fe-badge">editable</span>
+          </div>
+          <textarea id="forge-editor" spellcheck="false" placeholder="Code will appear here as it streams. Edit then push back to the engine."></textarea>
+        </div>
+      </div>
+      <div id="forge-push-bar">
+        <button id="forge-push-btn" onclick="forgePush()">⚡ Push to Engine</button>
+        <span id="forge-push-status">Complete the stream before pushing.</span>
+        <button id="forge-clear-btn" onclick="forgeClear()">Clear</button>
+      </div>
+    </div>
+    <div id="h-resizer"></div>
+    <div id="terminal-wrap" class="view-pane">
+      <div id="term-header">
+        <span class="term-tab active" onclick="switchTermTab('terminal',this)">TERMINAL</span>
+        <span class="term-tab" onclick="switchTermTab('output',this)">OUTPUT</span>
+        <span style="flex:1"></span>
+        <span style="cursor:pointer;color:var(--dim);" onclick="clearTerm()" title="Clear">✕</span>
+      </div>
+      <div id="terminal"></div>
+      <div id="term-input-wrap">
+        <span id="term-prompt">sparkbyte ▸</span>
+        <input type="text" id="term-input" placeholder="Type a command..." autocomplete="off">
+      </div>
+    </div>
+  </div>
+
+  <div class="v-resizer" id="chat-resizer"></div>
+
+  <!-- CHAT SIDEBAR -->
+  <div id="chat-panel" class="view-pane">
+    <div id="chat-header">
+      <span id="chat-toggle" onclick="toggleChat()">◀</span>
+      <span>⚡ SPARK</span>
+      <span style="flex:1"></span>
+    </div>
+    <div id="chat-body">
+      <div id="chat"></div>
+      <div id="tool-active-bar">
+        <div class="tool-spinner"></div>
+        <span class="tool-name" id="tool-active-name">Running...</span>
+        <span class="tool-timer" id="tool-active-timer">0s</span>
+      </div>
+      <div id="chat-input-wrap">
+        <label for="file-input" id="attach-icon">📎</label>
+        <input type="file" id="file-input" accept="image/*">
+        <input type="text" id="chat-input" placeholder="Talk to Spark..." autocomplete="off">
+        <button id="stop-btn" onclick="abortGeneration()" title="Stop generation" style="display:none;background:rgba(255,50,50,0.18);border:1px solid rgba(255,60,60,0.45);color:#ff5555;border-radius:3px;padding:2px 9px;font-family:inherit;font-size:11px;cursor:pointer;letter-spacing:1px;transition:0.15s;flex-shrink:0;" onmouseover="this.style.background='rgba(255,50,50,0.35)'" onmouseout="this.style.background='rgba(255,50,50,0.18)'">⊣ STOP</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STATUS BAR -->
+<div id="statusbar">
+  <span id="sb-file" class="sb-pink">No file</span>
+  <span id="sb-pos">Ln 1, Col 1</span>
+  <span id="sb-lang" class="sb-green">Julia</span>
+  <span style="flex:1"></span>
+  <span id="sb-status" class="sb-green">● Connected</span>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div id="settings-overlay" onclick="if(event.target===this)closeSettings()">
+  <div id="settings-modal">
+    <div class="sm-header">
+      <span>⚙ SETTINGS</span>
+      <span class="sm-close" onclick="closeSettings()">✕</span>
+    </div>
+    <!-- Tab bar -->
+    <div class="sm-tabs">
+      <div class="sm-tab active" id="stab-system" onclick="switchSettingsTab('system')">⚙ System</div>
+      <div class="sm-tab" id="stab-appearance" onclick="switchSettingsTab('appearance')">✦ Appearance</div>
+      <div class="sm-tab" id="stab-telemetry" onclick="switchSettingsTab('telemetry')">◈ Telemetry</div>
+    </div>
+
+    <!-- SYSTEM TAB -->
+    <div class="sm-panel active" id="spanel-system">
+      <div class="sm-section">
+        <label>Gemini API Key</label>
+        <div class="sm-row">
+          <input type="password" id="settings-apikey" placeholder="Enter your Gemini API key..." autocomplete="off">
+          <span id="apikey-status" class="sm-badge missing">NOT SET</span>
+        </div>
+        <div class="sm-hint">Get a key at <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--blue);">aistudio.google.com/apikey</a></div>
+      </div>
+      <div class="sm-section">
+        <label>xAI / Grok API Key</label>
+        <div class="sm-row">
+          <input type="password" id="settings-xai-key" placeholder="Enter your xAI API key..." autocomplete="off">
+          <span id="xai-key-status" class="sm-badge missing">NOT SET</span>
+        </div>
+        <div class="sm-hint">Get a key at <a href="https://console.x.ai/" target="_blank" style="color:var(--blue);">console.x.ai</a></div>
+      </div>
+      <div class="sm-section">
+        <label>OpenAI API Key</label>
+        <div class="sm-row">
+          <input type="password" id="settings-openai-key" placeholder="Enter your OpenAI API key..." autocomplete="off">
+          <span id="openai-key-status" class="sm-badge missing">NOT SET</span>
+        </div>
+        <div class="sm-hint">Get a key at <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--blue);">platform.openai.com/api-keys</a></div>
+      </div>
+      <div class="sm-section">
+        <label>Cerebras API Key</label>
+        <div class="sm-row">
+          <input type="password" id="settings-cerebras-key" placeholder="Enter your Cerebras API key..." autocomplete="off">
+          <span id="cerebras-key-status" class="sm-badge missing">NOT SET</span>
+        </div>
+        <div class="sm-hint">Get a key at <a href="https://cloud.cerebras.ai/" target="_blank" style="color:var(--blue);">cloud.cerebras.ai</a></div>
+      </div>
+      <div class="sm-section">
+        <label>Ollama (Local)</label>
+        <div class="sm-hint" style="color:var(--green)">No key needed — runs locally at <code>localhost:11434</code>. Install from <a href="https://ollama.com" target="_blank" style="color:var(--blue);">ollama.com</a> and pull a model first.</div>
+      </div>
+      <div class="sm-section">
+        <label>Active Model</label>
+        <div class="sm-row">
+          <select id="settings-model">
+            <optgroup label="── Gemini ──">
+              <option value="gemini-3.1-pro">🔧 Gemini 3.1 Pro</option>
+              <option value="gemini-3.1-flash-lite-preview">🔧 Flash-Lite (fast)</option>
+              <option value="gemini-3.1-flash-live">Flash-Live</option>
+              <option value="gemma-4-26b-a4b-it">Gemma 4</option>
+            </optgroup>
+            <optgroup label="── Grok (xAI) ──">
+              <option value="grok-4.20-multi-agent-0309">🔧 Grok 4.20 Multi-Agent ✦</option>
+              <option value="grok-4.20-reasoning">🔧 Grok 4.20 Reasoning ✦</option>
+              <option value="grok-3">🔧 Grok 3</option>
+              <option value="grok-3-fast">🔧 Grok 3 Fast</option>
+              <option value="grok-3-mini">🔧 Grok 3 Mini</option>
+              <option value="grok-3-mini-fast">🔧 Grok 3 Mini Fast</option>
+            </optgroup>
+            <optgroup label="── OpenAI ──">
+              <option value="gpt-4.1">🔧 GPT-4.1</option>
+              <option value="gpt-4o">🔧 GPT-4o</option>
+              <option value="gpt-4o-mini">🔧 GPT-4o Mini</option>
+              <option value="o4-mini">🔧 o4-mini</option>
+            </optgroup>
+            <optgroup label="── Ollama (Local) ──">
+              <option value="ollama:llama3.3">🔧 Llama 3.3</option>
+              <option value="ollama:llama3.2">🔧 Llama 3.2</option>
+              <option value="ollama:mistral">Mistral</option>
+              <option value="ollama:deepseek-r1">DeepSeek R1</option>
+              <option value="ollama:qwen3">🔧 Qwen 3</option>
+              <option value="ollama:phi4">🔧 Phi 4</option>
+            </optgroup>
+            <optgroup label="── Cerebras ──">
+              <option value="llama-4-scout-17b-16e-instruct">🔧 Llama 4 Scout 17B</option>
+              <option value="llama-4-maverick-17b-128e-instruct">🔧 Llama 4 Maverick 17B</option>
+              <option value="llama3.3-70b">🔧 Llama 3.3 70B</option>
+              <option value="qwen-3-32b">🔧 Qwen 3 32B</option>
+              <option value="gpt-oss-120b">🔧 GPT-OSS 120B ✦</option>
+            </optgroup>
+          </select>
+        </div>
+        <div class="sm-hint">You can also switch models from the taskbar dropdown at the top.</div>
+      </div>
+      <div class="sm-section">
+        <label>Active Persona</label>
+        <div class="sm-row">
+          <select id="settings-persona"></select>
+        </div>
+      </div>
+      <div class="sm-section">
+        <label>Engine State</label>
+        <div style="font-size:11px;color:var(--text);line-height:1.8;">
+          <div>Gear: <span id="settings-gear" style="color:var(--pink);font-weight:bold;">—</span></div>
+          <div>Modes: <span id="settings-modes" style="color:var(--blue);">—</span></div>
+          <div>Status: <span id="settings-ws-status" style="color:var(--green);">—</span></div>
+        </div>
+      </div>
+      <div class="sm-actions">
+        <button class="sm-btn secondary" onclick="closeSettings()">Cancel</button>
+        <button class="sm-btn primary" onclick="saveSettings()">Save</button>
+      </div>
+    </div>
+
+    <!-- APPEARANCE TAB -->
+    <div class="sm-panel" id="spanel-appearance">
+      <div class="ap-section-label">Background</div>
+
+      <div class="ap-row">
+        <label>Style</label>
+        <select id="ap-style" onchange="applyAppearance()">
+          <option value="orbs">🔮 Orbs (default)</option>
+          <option value="nebula">🌌 Nebula</option>
+          <option value="particles">✦ Particles</option>
+          <option value="pulse">◉ Pulse</option>
+          <option value="off">○ Off</option>
+        </select>
+      </div>
+
+      <div class="ap-row">
+        <label>Speed</label>
+        <input type="range" id="ap-speed" min="0" max="4" step="1" value="1" oninput="apSlider('ap-speed','ap-speed-val',['Frozen','Glacial','Slow','Medium','Fast']);applyAppearance()">
+        <span class="ap-val" id="ap-speed-val">Glacial</span>
+      </div>
+
+      <div class="ap-row">
+        <label>Orb Count</label>
+        <input type="range" id="ap-count" min="1" max="9" step="1" value="5" oninput="apSlider('ap-count','ap-count-val');applyAppearance()">
+        <span class="ap-val" id="ap-count-val">5</span>
+      </div>
+
+      <div class="ap-row">
+        <label>Intensity</label>
+        <input type="range" id="ap-intensity" min="1" max="10" step="1" value="5" oninput="apSlider('ap-intensity','ap-intensity-val');applyAppearance()">
+        <span class="ap-val" id="ap-intensity-val">5</span>
+      </div>
+
+      <div class="ap-row">
+        <label>Color Theme</label>
+      </div>
+      <div class="ap-swatch-row" id="ap-swatches">
+        <div class="ap-swatch selected" data-theme="cyber"    title="Cyber"    style="background:conic-gradient(#00ff99,#ff00ff,#0088ff,#00ff99)" onclick="selectTheme('cyber')"></div>
+        <div class="ap-swatch"          data-theme="fire"     title="Fire"     style="background:conic-gradient(#ff4400,#ffaa00,#ff0055,#ff4400)" onclick="selectTheme('fire')"></div>
+        <div class="ap-swatch"          data-theme="ice"      title="Ice"      style="background:conic-gradient(#00cfff,#a0e8ff,#6688ff,#00cfff)" onclick="selectTheme('ice')"></div>
+        <div class="ap-swatch"          data-theme="void"     title="Void"     style="background:conic-gradient(#aa00ff,#ff00cc,#80ff00,#aa00ff)" onclick="selectTheme('void')"></div>
+        <div class="ap-swatch"          data-theme="forest"   title="Forest"   style="background:conic-gradient(#00ff60,#88ff00,#005520,#00ff60)" onclick="selectTheme('forest')"></div>
+        <div class="ap-swatch"          data-theme="mono"     title="Mono"     style="background:conic-gradient(#ffffff,#888888,#444444,#ffffff)" onclick="selectTheme('mono')"></div>
+      </div>
+
+      <div class="ap-toggle">
+        <label>Scanlines</label>
+        <input type="checkbox" id="ap-scanlines" checked onchange="applyAppearance()">
+      </div>
+
+      <hr class="ap-divider">
+      <div class="ap-section-label">Interface</div>
+
+      <div class="ap-row">
+        <label>Panel Blur</label>
+        <input type="range" id="ap-blur" min="0" max="30" step="2" value="16" oninput="apSlider('ap-blur','ap-blur-val',null,'px');applyAppearance()">
+        <span class="ap-val" id="ap-blur-val">16px</span>
+      </div>
+
+      <div class="ap-row">
+        <label>Panel Opacity</label>
+        <input type="range" id="ap-opacity" min="1" max="10" step="1" value="7" oninput="apSlider('ap-opacity','ap-opacity-val');applyAppearance()">
+        <span class="ap-val" id="ap-opacity-val">7</span>
+      </div>
+
+      <div class="ap-row">
+        <label>Font Size</label>
+        <input type="range" id="ap-fontsize" min="10" max="16" step="1" value="12" oninput="apSlider('ap-fontsize','ap-fontsize-val',null,'px');applyAppearance()">
+        <span class="ap-val" id="ap-fontsize-val">12px</span>
+      </div>
+
+      <div class="sm-actions">
+        <button class="sm-btn secondary" onclick="resetAppearance()">Reset Defaults</button>
+        <button class="sm-btn primary" onclick="saveAppearance();closeSettings()">Save</button>
+      </div>
+    </div>
+
+    <!-- TELEMETRY TAB -->
+    <div class="sm-panel" id="spanel-telemetry">
+      <div class="tl-grid">
+        <div class="tl-card">
+          <div class="tl-label">GAIT</div>
+          <div class="tl-val" id="tl-gait">—</div>
+        </div>
+        <div class="tl-card">
+          <div class="tl-label">RHYTHM</div>
+          <div class="tl-val" id="tl-rhythm">—</div>
+        </div>
+        <div class="tl-card">
+          <div class="tl-label">APERTURE</div>
+          <div class="tl-val" id="tl-aperture">—</div>
+        </div>
+        <div class="tl-card">
+          <div class="tl-label">BEHAVIOR</div>
+          <div class="tl-val" id="tl-behavior">—</div>
+        </div>
+        <div class="tl-card">
+          <div class="tl-label">LOOPS</div>
+          <div class="tl-val" id="tl-loops">0</div>
+        </div>
+        <div class="tl-card">
+          <div class="tl-label">ELAPSED</div>
+          <div class="tl-val" id="tl-elapsed">—</div>
+        </div>
+      </div>
+
+      <div class="tl-section">
+        <div class="tl-label">DRIFT PRESSURE</div>
+        <div class="tl-bar-wrap">
+          <div class="tl-bar" id="tl-drift-bar"></div>
+        </div>
+        <div class="tl-bar-val" id="tl-drift-val">0.000</div>
+      </div>
+
+      <div class="tl-section">
+        <div class="tl-label">STABILITY SCORE</div>
+        <div class="tl-bar-wrap">
+          <div class="tl-bar tl-bar-green" id="tl-stability-bar"></div>
+        </div>
+        <div class="tl-bar-val" id="tl-stability-val">0.000</div>
+      </div>
+
+      <div class="tl-section">
+        <div class="tl-label">LAST TOOL</div>
+        <div class="tl-tool-row">
+          <span class="tl-tool-name" id="tl-last-tool">—</span>
+          <span class="tl-tool-ms" id="tl-last-tool-ms"></span>
+        </div>
+      </div>
+
+      <div class="tl-section">
+        <div class="tl-label">PERSONA · MODEL</div>
+        <div class="tl-val" id="tl-persona-model">—</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- HISTORY MODAL -->
+<div id="history-overlay" onclick="if(event.target===this)closeHistory()">
+  <div id="history-modal">
+    <div class="hm-header">
+      <span>◷ SESSION HISTORY</span>
+      <span class="hm-close" onclick="closeHistory()">✕</span>
+    </div>
+    <div class="hm-body">
+      <div id="history-session-list"><div class="hm-empty">Loading...</div></div>
+      <div id="history-turn-view"><div class="hm-empty">Select a session to view turns.</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- CONTEXT MENU -->
+<div id="ctx-menu">
+  <div class="ctx-item" onclick="ctxAction('open')">Open</div>
+  <div class="ctx-item" onclick="ctxAction('rename')">Rename</div>
+  <div class="ctx-item" onclick="ctxAction('delete')">Delete</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" onclick="ctxAction('newfile')">New File Here</div>
+  <div class="ctx-item" onclick="ctxAction('newdir')">New Folder Here</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" onclick="ctxAction('run')">Run File</div>
+</div>
+
+<script>
+/* ====== STATE ====== */
+const tabs=[];  // {path, content, dirty, model(null)}
+let activeTab=-1, currentImgB64=null, currentImgMime=null, ctxTarget=null;
+const termHistory=[], termOutputBuf=[];
+let termHistIdx=-1, termMode='terminal';
+let collapsedDirs=new Set();
+let ws;
+let fileViewerActive=false; // new flag
+
+/* ====== DOM REFS ====== */
+const $=id=>document.getElementById(id);
+const chat=$('chat'), chatInput=$('chat-input'), gearVal=$('gear-val'), modeVal=$('mode-val');
+const fileInput=$('file-input'), attachIcon=$('attach-icon'), modelSelect=$('model-select');
+const personaSelect=$('persona-select'), codeEditor=$('code-editor'), editorEmpty=$('editor-empty');
+const tabBar=$('tab-bar'), terminal=$('terminal'), termInput=$('term-input');
+const searchInput=$('search-input'), searchResults=$('search-results');
+const sbFile=$('sb-file'), sbPos=$('sb-pos'), sbLang=$('sb-lang'), sbStatus=$('sb-status');
+const ctxMenu=$('ctx-menu');
+
+/* ====== WEBSOCKET ====== */
+let _isGenerating = false;
+function _setGenerating(v){
+  _isGenerating=v;
+  const btn=$('stop-btn');
+  if(btn) btn.style.display=v?'inline-flex':'none';
+}
+function abortGeneration(){
+  send({type:'stop_generation'});
+  _setGenerating(false);
+  _toolActiveClear();
+}
+function connect(){
+  ws=new WebSocket('ws://'+location.host+'/ws');
+  ws.onopen=()=>{sbStatus.textContent='● Connected';sbStatus.style.color='var(--green)';loadFileTree();loadPersonas();};
+  ws.onclose=()=>{sbStatus.textContent='● Disconnected';sbStatus.style.color='#f44';_setGenerating(false);setTimeout(connect,1500);};
+  ws.onmessage=e=>{
+    const d=JSON.parse(e.data);
+    if(d.type==='ui_update'){gearVal.textContent=d.gear;modeVal.textContent=d.modes.join(' · ');}
+    else if(d.type==='confirm'){
+      _setGenerating(false);
+      const prompt=(d.text||'Run this tool?').replaceAll('**','');
+      const answer=window.confirm(prompt);
+      send({type:'confirm_response',id:d.id,answer});
+    }
+    else if(d.type==='spark'){_setGenerating(false);_toolActiveClear();appendChat('<div class="msg spark">'+marked.parse(d.text)+'</div>');}
+    else if(d.type==='tool'){appendChat('<div class="tool">⚡ '+d.text+'</div>');}
+    else if(d.type==='tool_start'){_toolActiveStart(d.name);}
+    else if(d.type==='tool_done'){_toolActiveDone(d.name,d.preview,d.elapsed_ms);}
+    else if(d.type==='tool_error'){appendChat('<div class="tool_error">'+d.text+'</div>');_toolActiveClear();}
+    else if(d.type==='thinking'){
+      _setGenerating(true);
+      // Show animated thinking bubble — id so we can update it later
+      const id='think-'+Date.now();
+      appendChat(`<div class="thinking-bubble" id="${id}">
+        <div class="think-header" onclick="toggleThink('${id}')">
+          <span class="think-icon">🧠</span>
+          <span class="think-label">Thinking...</span>
+          <span class="think-toggle">▶ expand</span>
+        </div>
+        <div class="think-body">${escHtml(d.text||'')}</div>
+      </div>`);
+      window._lastThinkId = id;
+    }
+    else if(d.type==='thinking_done'){
+      // Finalize the bubble — mark done, update label, append full trace
+      const id = window._lastThinkId;
+      if(id){
+        const el=document.getElementById(id);
+        if(el){
+          el.classList.add('done');
+          el.querySelector('.think-label').textContent='Reasoning trace (' + (d.chars||'?') + ' chars)';
+          el.querySelector('.think-toggle').textContent='▶ expand';
+          if(d.text) el.querySelector('.think-body').textContent=d.text;
+        }
+      }
+    }
+    else if(d.type==='builder_tree'){renderTree(d.files);}
+    else if(d.type==='builder_file'){onFileLoaded(d.content);}
+    else if(d.type==='builder_output'){termPrint(d.output,'info');}
+    else if(d.type==='terminal_output'){termPrint(d.output);}
+    else if(d.type==='personas_list'){populatePersonas(d.personas);}
+    else if(d.type==='search_results'){showSearchResults(d.results,d.query);}
+    else if(d.type==='settings_all_status'){
+      const MAP={gemini:'apikey-status',xai:'xai-key-status',openai:'openai-key-status',cerebras:'cerebras-key-status'};
+      for(const[provider,badgeId] of Object.entries(MAP)){
+        const s=d.keys&&d.keys[provider];const el=$(badgeId);if(!el)continue;
+        if(s&&s.has_key){el.textContent='SET ('+s.key_preview+')';el.className='sm-badge ok';}
+        else{el.textContent='NOT SET';el.className='sm-badge missing';}
+      }
+    }
+    else if(d.type==='history_list'){_renderHistoryList(d.sessions);}
+    else if(d.type==='session_turns'){_renderSessionTurns(d.turns);}
+    else if(d.type==='telemetry_update'){_applyTelemetry(d);}
+    else if(d.type==='forge_start'){_forgeStart(d);}
+    else if(d.type==='forge_line'){_forgeLine(d);}
+    else if(d.type==='forge_done'){_forgeDone(d);}
+    else if(d.type==='forge_resubmit_result'){_forgeResubmitResult(d);}
+  };
+}
+
+function send(obj){ws&&ws.readyState===1&&ws.send(JSON.stringify(obj));}
+
+/* ====== TOOL ACTIVE INDICATOR ====== */
+let _toolTimer = null, _toolStartMs = 0;
+function _toolActiveStart(name){
+  const bar=$('tool-active-bar'), nm=$('tool-active-name'), tm=$('tool-active-timer');
+  if(!bar)return;
+  nm.textContent = name;
+  tm.textContent = '0s';
+  bar.classList.add('visible');
+  _toolStartMs = Date.now();
+  clearInterval(_toolTimer);
+  _toolTimer = setInterval(()=>{
+    const s = ((Date.now()-_toolStartMs)/1000).toFixed(1);
+    if(tm) tm.textContent = s+'s';
+  }, 200);
+}
+function _toolActiveDone(name, preview, elapsed_ms){
+  _toolActiveClear();
+  const sec = (elapsed_ms/1000).toFixed(2);
+  appendChat(`<div class="tool" style="opacity:0.75;">✓ <b>${escHtml(name)}</b> (${sec}s) — ${escHtml(preview)}</div>`);
+}
+function _toolActiveClear(){
+  clearInterval(_toolTimer); _toolTimer=null;
+  const bar=$('tool-active-bar');
+  if(bar) bar.classList.remove('visible');
+}
+
+/* ====== SESSION HISTORY ====== */
+function openHistory(){
+  $('history-overlay').classList.add('visible');
+  $('history-session-list').innerHTML='<div class="hm-empty">Loading...</div>';
+  $('history-turn-view').innerHTML='<div class="hm-empty">Select a session to view turns.</div>';
+  send({type:'get_history'});
+}
+function closeHistory(){$('history-overlay').classList.remove('visible');}
+function _renderHistoryList(sessions){
+  const el=$('history-session-list');
+  if(!sessions||sessions.length===0){el.innerHTML='<div class="hm-empty">No sessions found.</div>';return;}
+  el.innerHTML=sessions.map(s=>{
+    const d=new Date(parseInt(s.session_id)*1000);
+    const dateStr=isNaN(d)?s.started_at:d.toLocaleString();
+    const ended=s.ended_at?'ended':' <span style="color:var(--green)">● live</span>';
+    return `<div class="hm-session-row" onclick="loadHistorySession('${escHtml(s.session_id)}',this)">
+      <div style="font-size:10px;color:var(--text)">${escHtml(s.session_id)}</div>
+      <div class="hm-session-date">${dateStr}</div>
+      <div class="hm-session-events">${s.events||0} events${ended}</div>
+    </div>`;
+  }).join('');
+}
+function loadHistorySession(sid, rowEl){
+  document.querySelectorAll('.hm-session-row').forEach(r=>r.classList.remove('active'));
+  if(rowEl) rowEl.classList.add('active');
+  $('history-turn-view').innerHTML='<div class="hm-empty">Loading...</div>';
+  send({type:'load_session',session_id:sid});
+}
+function _renderSessionTurns(turns){
+  const el=$('history-turn-view');
+  if(!turns||turns.length===0){el.innerHTML='<div class="hm-empty">No turn data for this session.</div>';return;}
+  el.innerHTML=turns.map(t=>{
+    const role=t.role||'?';
+    let content=t.content||'';
+    // Try to extract a human-readable snippet from the JSON payload
+    try{
+      const d=JSON.parse(content);
+      if(role==='turn_complete') content=`👤 ${d.user_preview||''}\n⚡ reply: ${d.reply_len||0} chars, ${d.tool_loops||0} tool loops, ${d.elapsed_ms||0}ms`;
+      else if(role==='tool_call') content=`🔧 ${d.tool_name||'?'} — args: ${JSON.stringify(d.args||{}).slice(0,120)}`;
+      else if(role==='tool_result') content=`✓ ${d.tool_name||'?'} (${d.elapsed_ms||0}ms)${d.is_error?' ❌':''}`;
+      else if(role==='ws_in') content=`← ${d.msg_type||'?'}: ${d.text_preview||''}`;
+      else content=JSON.stringify(d).slice(0,300);
+    }catch(e){}
+    const roleLabel={'turn_complete':'TURN','tool_call':'TOOL','tool_result':'RESULT','ws_in':'IN'}[role]||role.toUpperCase();
+    const roleColor={'turn_complete':'var(--green)','tool_call':'var(--blue)','tool_result':'var(--dim)','ws_in':'var(--pink)'}[role]||'var(--text)';
+    return `<div class="hm-turn ${role}" style="border-left-color:${roleColor}">
+      <div class="hm-turn-meta"><span style="color:${roleColor}">${roleLabel}</span> · turn ${t.loop_iter||0} · ${t.ts.slice(0,19)}</div>
+      <div class="hm-turn-content">${escHtml(first200(content))}</div>
+    </div>`;
+  }).join('');
+  el.scrollTop=el.scrollHeight;
+}
+function first200(s){return s.length>300?s.slice(0,300)+'…':s;}
+
+/* ====== ENGINE MODE TOGGLE ====== */
+let engineMode = true; // true = full tools, false = chat only
+function toggleEngineMode(){
+  engineMode = !engineMode;
+  const btn = $('mode-toggle');
+  if(engineMode){
+    btn.textContent = '⚡ ENGINE';
+    btn.classList.remove('chat-only');
+    btn.title = 'ENGINE mode — full tool access. Click to switch to CHAT only.';
+    appendChat('<div class="msg tool" style="color:var(--green);">⚡ Engine mode ON — tools active.</div>');
+  } else {
+    btn.textContent = '💬 CHAT';
+    btn.classList.add('chat-only');
+    btn.title = 'CHAT mode — talk only, no tools. Click to enable ENGINE mode.';
+    appendChat('<div class="msg tool" style="color:#ff8800;">💬 Chat mode ON — tools locked. SparkByte will just talk.</div>');
+  }
+}
+
+/* ====== FILE TREE ====== */
+function loadFileTree(){send({type:'builder_cmd',cmd:'list_tree'});}
+function loadPersonas(){send({type:'builder_cmd',cmd:'list_personas'});}
+
+function renderTree(files){
+  const exts=['.jl','.json','.toml','.py','.md','.txt','.html','.css','.js','.yaml','.yml','.env','.gitignore'];
+  const tree={};
+  files.forEach(f=>{
+    const parts=f.split('/');
+    let node=tree;
+    for(let i=0;i<parts.length-1;i++){
+      if(!node[parts[i]])node[parts[i]]={};
+      node=node[parts[i]];
+    }
+    const name=parts[parts.length-1];
+    const ext=name.includes('.')?'.'+name.split('.').pop():'';
+    if(exts.includes(ext)||name==='.gitignore'||name==='.env')node[name]=f;
+  });
+  function renderNode(obj,prefix){
+    let html='';
+    const dirs=[],fils=[];
+    Object.keys(obj).sort().forEach(k=>{typeof obj[k]==='string'?fils.push(k):dirs.push(k);});
+    dirs.forEach(d=>{
+      const full=prefix?prefix+'/'+d:d;
+      const open=!collapsedDirs.has(full);
+      html+='<div class="tree-dir" onclick="toggleDir(event,\''+full.replace(/'/g,"\\'")+'\')"><span class="arrow '+(open?'open':'')+'">▶</span> '+d+'</div>';
+      if(open)html+='<div class="tree-dir-children">'+renderNode(obj[d],full)+'</div>';
+    });
+    fils.forEach(f=>{
+      const path=obj[f];
+      const icon=f.endsWith('.jl')?'◈':f.endsWith('.json')?'{}':f.endsWith('.py')?'🐍':'·';
+      const cls=activeTab>=0&&tabs[activeTab].path===path?'active':'';
+      const dirty=tabs.find(t=>t.path===path&&t.dirty)?'dirty':'';
+      html+='<div class="tree-item '+cls+' '+dirty+'" data-path="'+path+'" onclick="openFile(\''+path.replace(/'/g,"\\'")+'\')">'+icon+' '+f+'</div>';
+    });
+    return html;
+  }
+  $('tree-content').innerHTML=renderNode(tree,'')||'<div style="color:var(--dim);padding:10px;">empty</div>';
+  // attach context menu
+  document.querySelectorAll('.tree-item,.tree-dir').forEach(el=>{
+    el.oncontextmenu=ev=>{ev.preventDefault();showCtxMenu(ev,el.dataset.path||el.textContent.trim());};
+  });
+}
+
+function toggleDir(ev,dir){
+  ev.stopPropagation();
+  collapsedDirs.has(dir)?collapsedDirs.delete(dir):collapsedDirs.add(dir);
+  loadFileTree();
+}
+
+/* ====== TABS ====== */
+function openFile(path){
+  const idx=tabs.findIndex(t=>t.path===path);
+  if(idx>=0){activateTab(idx);return;}
+  tabs.push({path,content:'',dirty:false});
+  activateTab(tabs.length-1);
+  send({type:'builder_cmd',cmd:'read_file',path});
+}
+
+function onFileLoaded(content){
+  if(activeTab<0)return;
+  tabs[activeTab].content=content;
+  tabs[activeTab].dirty=false;
+  codeEditor.value=content;
+  editorEmpty.style.display='none';
+  renderTabs();
+  updateStatus();
+}
+
+function activateTab(idx){
+  deactivateForgeTab();
+  if(activeTab>=0)tabs[activeTab].content=codeEditor.value;
+  activeTab=idx;
+  codeEditor.value=tabs[idx].content;
+  $('editor-wrap').classList.remove('hidden');
+  editorEmpty.style.display='none';
+  renderTabs();
+  updateStatus();
+  // highlight in tree
+  document.querySelectorAll('.tree-item').forEach(el=>{
+    el.classList.toggle('active',el.dataset.path===tabs[idx].path);
+  });
+  hideFileViewer(); // ensure file viewer hidden when a file tab is active
+}
+
+function closeTab(idx,ev){
+  if(ev)ev.stopPropagation();
+  tabs.splice(idx,1);
+  if(tabs.length===0){activeTab=-1;codeEditor.value='';editorEmpty.style.display='block';}
+  else{activeTab=Math.min(idx,tabs.length-1);codeEditor.value=tabs[activeTab].content;}
+  renderTabs();updateStatus();
+  hideFileViewer();
+}
+
+let forgeTabActive = false;
+let _forgeCurrentName = '';
+let _forgeStreaming = false;
+
+function renderTabs(){
+  const filesTab = `<div class="etab ${fileViewerActive?'active':''}" id="files-tab" onclick="activateFilesTab()">Files</div>`;
+  const fileTabs = tabs.map((t,i)=>{
+    const name=t.path.split('/').pop();
+    const cls=(i===activeTab?'active':'')+(t.dirty?' dirty':'');
+    return '<div class="etab '+cls+'" onclick="activateTab('+i+')"><span class="tab-name">'+name+'</span><span class="tab-close" onclick="closeTab('+i+',event)">×</span></div>';
+  }).join('');
+  const forgeCls='forge-tab'+(_forgeStreaming?' streaming':'')+( forgeTabActive?' active':'');
+  const forgeTab=`<div class="etab ${forgeCls}" onclick="activateForgeTab()"><span class="forge-dot"></span>FORGE</div>`;
+  tabBar.innerHTML=filesTab+fileTabs+forgeTab;
+}
+
+function activateForgeTab(){
+  forgeTabActive=true;fileViewerActive=false;activeTab=-1;
+  $('editor-wrap').classList.add('hidden');
+  $('forge-panel').classList.add('active');
+  renderTabs();
+}
+function deactivateForgeTab(){
+  forgeTabActive=false;
+  $('forge-panel').classList.remove('active');
+}
+
+/* ── Forge stream handlers ── */
+function _forgeStart(d){
+  _forgeCurrentName = d.name||'?';
+  _forgeStreaming = true;
+  $('forge-tool-name').textContent = 'tool_'+_forgeCurrentName;
+  $('forge-status').textContent = 'Streaming… ('+d.total_lines+' lines)';
+  $('forge-line-counter').textContent = '';
+  $('forge-stream').innerHTML = '';
+  $('forge-editor').value = '';
+  $('forge-push-btn').classList.remove('ready');
+  $('forge-push-status').textContent = 'Streaming…';
+  // Auto-switch to forge tab
+  activateForgeTab();
+  renderTabs();
+}
+function _forgeLine(d){
+  const stream = $('forge-stream');
+  const span = document.createElement('span');
+  span.className='fline';
+  span.textContent=(d.line_num+': '+d.line+'\n');
+  stream.appendChild(span);
+  stream.scrollTop = stream.scrollHeight;
+  $('forge-line-counter').textContent = d.line_num+'/'+d.total_lines;
+  // Mirror into editor (editor shows clean code, no line numbers)
+  $('forge-editor').value += d.line+'\n';
+}
+function _forgeDone(d){
+  _forgeStreaming = false;
+  $('forge-status').textContent = '✓ Forge complete — '+d.total_lines+' lines. Edit and push back, or leave as-is.';
+  $('forge-line-counter').textContent = '';
+  $('forge-push-btn').classList.add('ready');
+  $('forge-push-status').textContent = 'Ready. Edit the code above, then push to apply.';
+  renderTabs();
+}
+function _forgeResubmitResult(d){
+  if(d.result && !d.result.error){
+    $('forge-push-status').textContent = '⚡ Pushed! tool_'+d.name+' is live.';
+    $('forge-status').textContent = '✓ Re-forged successfully.';
+  } else {
+    const err = d.result ? d.result.error : 'Unknown error';
+    $('forge-push-status').textContent = '❌ '+(err||'Push failed');
+  }
+}
+function forgePush(){
+  const code = $('forge-editor').value.trim();
+  if(!code||!_forgeCurrentName) return;
+  $('forge-push-status').textContent = 'Pushing…';
+  $('forge-push-btn').classList.remove('ready');
+  send({type:'forge_resubmit', name:_forgeCurrentName, code:code, description:'Edited via forge stream'});
+}
+function forgeClear(){
+  _forgeCurrentName='';_forgeStreaming=false;
+  $('forge-tool-name').textContent='— idle —';
+  $('forge-status').textContent='Waiting for forge events…';
+  $('forge-line-counter').textContent='';
+  $('forge-stream').innerHTML='';
+  $('forge-editor').value='';
+  $('forge-push-btn').classList.remove('ready');
+  $('forge-push-status').textContent='Complete the stream before pushing.';
+  renderTabs();
+}
+
+/* ====== EDITOR ====== */
+codeEditor.addEventListener('input',()=>{
+  if(activeTab>=0){tabs[activeTab].content=codeEditor.value;tabs[activeTab].dirty=true;renderTabs();}
+});
+codeEditor.addEventListener('keydown',e=>{
+  // Tab key inserts spaces
+  if(e.key==='Tab'){e.preventDefault();const s=codeEditor.selectionStart,end=codeEditor.selectionEnd;codeEditor.value=codeEditor.value.substring(0,s)+'    '+codeEditor.value.substring(end);codeEditor.selectionStart=codeEditor.selectionEnd=s+4;codeEditor.dispatchEvent(new Event('input'));}
+  // Ctrl+S saves
+  if(e.ctrlKey&&e.key==='s'){e.preventDefault();saveCurrentFile();}
+  // Ctrl+Shift+F find in files
+  if(e.ctrlKey&&e.shiftKey&&e.key==='F'){e.preventDefault();toggleSearch();searchInput.focus();}
+});
+codeEditor.addEventListener('click',updateCursor);
+codeEditor.addEventListener('keyup',updateCursor);
+function updateCursor(){
+  const v=codeEditor.value,s=codeEditor.selectionStart;
+  const lines=v.substring(0,s).split('\n');
+  sbPos.textContent='Ln '+lines.length+', Col '+lines[lines.length-1].length;
+}
+
+function saveCurrentFile(){
+  if(activeTab<0)return;
+  const t=tabs[activeTab];
+  send({type:'builder_cmd',cmd:'write_file',path:t.path,content:t.content});
+  t.dirty=false;renderTabs();
+  termPrint('saved: '+t.path,'info');
+}
+
+function updateStatus(){
+  if(activeTab>=0){
+    const t=tabs[activeTab];
+    sbFile.textContent=t.path;
+    const ext=t.path.split('.').pop();
+    if(ext==='jl')sbLang.textContent='Julia'; else if(ext==='py')sbLang.textContent='Python'; else if(ext==='json')sbLang.textContent='JSON'; else if(ext==='toml')sbLang.textContent='TOML'; else if(ext==='md')sbLang.textContent='Markdown'; else sbLang.textContent=ext.toUpperCase();
+  }else{sbFile.textContent='No file';sbLang.textContent='';}
+}
+
+/* ====== TERMINAL ====== */
+function termPrint(text,cls){
+  const el=document.createElement('div');
+  el.className='term-line'+(cls?' '+cls:'');
+  el.textContent=text;
+  terminal.appendChild(el);
+  terminal.scrollTop=terminal.scrollHeight;
+  if(termMode==='output')termOutputBuf.push({text,cls});
+}
+function clearTerm(){terminal.innerHTML='';}
+
+function switchTermTab(mode,el){
+  termMode=mode;
+  document.querySelectorAll('.term-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+}
+
+termInput.addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&termInput.value.trim()){
+    const cmd=termInput.value.trim();
+    termPrint('▸ '+cmd);
+    termHistory.unshift(cmd);termHistIdx=-1;
+
+    // Built-in commands
+    if(cmd==='clear'){clearTerm();}
+    else if(cmd.startsWith('run ')){
+      const path=cmd.slice(4).trim();
+      const ext=path.split('.').pop();
+      const lang=ext==='py'?'python':'julia';
+      send({type:'builder_cmd',cmd:'execute',code:'include("'+path+'")',lang});
+    }
+    else if(cmd.startsWith('open ')){openFile(cmd.slice(5).trim());}
+    else if(cmd==='ls'||cmd==='dir'){loadFileTree();termPrint('(see file tree)','info');}
+    else if(cmd.startsWith('save')){saveCurrentFile();}
+    else{send({type:'builder_cmd',cmd:'terminal_exec',command:cmd});}
+
+    termInput.value='';
+  }
+  if(e.key==='ArrowUp'&&termHistory.length){termHistIdx=Math.min(termHistIdx+1,termHistory.length-1);termInput.value=termHistory[termHistIdx];}
+  if(e.key==='ArrowDown'){termHistIdx=Math.max(termHistIdx-1,-1);termInput.value=termHistIdx>=0?termHistory[termHistIdx]:'';}
+});
+
+/* ====== CHAT ====== */
+function appendChat(html){const d=document.createElement('div');d.innerHTML=html;chat.appendChild(d.firstElementChild||d);chat.scrollTop=chat.scrollHeight;}
+function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function toggleThink(id){
+  const el=document.getElementById(id);
+  if(!el) return;
+  const expanded=el.classList.toggle('expanded');
+  el.querySelector('.think-toggle').textContent=expanded?'▼ collapse':'▶ expand';
+}
+function toggleChat(){
+  const p=$('chat-panel');
+  p.classList.toggle('collapsed');
+  $('chat-toggle').textContent=p.classList.contains('collapsed')?'▶':'◀';
+  $('chat-body').style.display=p.classList.contains('collapsed')?'none':'flex';
+}
+
+chatInput.addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&(chatInput.value.trim()||currentImgB64)){
+    const v=chatInput.value;
+    let h='<div class="msg user">'+marked.parse(v||'[Image]');
+    if(currentImgB64)h+='<img src="data:'+currentImgMime+';base64,'+currentImgB64+'" class="img-preview">';
+    appendChat(h+'</div>');
+    send({type:'user_msg',text:v,image:currentImgB64,mime:currentImgMime,chat_mode:!engineMode});
+    _setGenerating(true);
+    chatInput.value='';currentImgB64=null;currentImgMime=null;fileInput.value='';attachIcon.classList.remove('has-file');
+  }
+});
+fileInput.onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{currentImgB64=ev.target.result.split(',')[1];currentImgMime=f.type;attachIcon.classList.add('has-file');};r.readAsDataURL(f);};
+
+/* ====== PERSONA ====== */
+function populatePersonas(names){
+  personaSelect.innerHTML=names.map(n=>'<option value="'+n+'">'+n+'</option>').join('');
+  personaSelect.value='SparkByte';
+}
+personaSelect.onchange=e=>send({type:'persona_change',persona:e.target.value});
+modelSelect.onchange=e=>send({type:'model_change',model:e.target.value});
+
+/* ====== SEARCH ====== */
+function toggleSearch(){
+  const bar=$('search-bar');bar.classList.toggle('visible');
+  if(bar.classList.contains('visible'))searchInput.focus();
+  else{searchResults.classList.remove('visible');searchResults.innerHTML='';}
+}
+searchInput.addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&searchInput.value.trim()){send({type:'builder_cmd',cmd:'search_files',query:searchInput.value.trim()});}
+  if(e.key==='Escape'){toggleSearch();}
+});
+function showSearchResults(results,query){
+  let html='';
+  Object.entries(results).forEach(([file,hits])=>{
+    html+='<div class="sr-file">'+file+'</div>';
+    hits.forEach(h=>{html+='<div class="sr-hit" onclick="openFile(\''+file.replace(/'/g,"\\'")+'\')"><span class="sr-ln">'+h.line+':</span>'+h.text.replace(new RegExp('('+query.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi'),'<b style=color:var(--yellow)>$1</b>')+'</div>';});
+  });
+  if(!html)html='<div style="padding:10px;color:var(--dim);">No results for "'+query+'"</div>';
+  searchResults.innerHTML=html;
+  searchResults.classList.add('visible');
+}
+
+/* ====== CONTEXT MENU ====== */
+function showCtxMenu(ev,target){
+  ctxTarget=target;
+  ctxMenu.style.left=ev.clientX+'px';ctxMenu.style.top=ev.clientY+'px';ctxMenu.style.display='block';
+}
+document.addEventListener('click',()=>{ctxMenu.style.display='none';});
+
+function ctxAction(action){
+  if(!ctxTarget)return;
+  if(action==='open')openFile(ctxTarget);
+  else if(action==='delete'){send({type:'builder_cmd',cmd:'delete_path',path:ctxTarget});}
+  else if(action==='rename'){
+    const newName=prompt('Rename to:',ctxTarget);
+    if(newName)send({type:'builder_cmd',cmd:'rename_path',old_path:ctxTarget,new_path:newName});
+  }
+  else if(action==='newfile'){
+    const dir=ctxTarget.includes('.')?ctxTarget.split('/').slice(0,-1).join('/'):
+      ctxTarget;
+    const name=prompt('File name:');
+    if(name)send({type:'builder_cmd',cmd:'create_file',path:(dir?dir+'/':'')+name});
+  }
+  else if(action==='newdir'){
+    const dir=ctxTarget.includes('.')?ctxTarget.split('/').slice(0,-1).join('/'):
+      ctxTarget;
+    const name=prompt('Folder name:');
+    if(name)send({type:'builder_cmd',cmd:'create_dir',path:(dir?dir+'/':'')+name});
+  }
+  else if(action==='run'){
+    const ext=ctxTarget.split('.').pop();
+    const lang=ext==='py'?'python':'julia';
+    termPrint('▸ running '+ctxTarget,'info');
+    send({type:'builder_cmd',cmd:'execute',code:'include("'+ctxTarget+'")',lang});
+  }
+  ctxMenu.style.display='none';
+}
+function promptNewFile(){const n=prompt('New file name (e.g. src/my.jl):');if(n)send({type:'builder_cmd',cmd:'create_file',path:n});}
+function promptNewDir(){const n=prompt('New folder name:');if(n)send({type:'builder_cmd',cmd:'create_dir',path:n});}
+
+/* ====== RESIZERS ====== */
+(function(){
+  // Horizontal: editor / terminal
+  const hRes=$('h-resizer'),termWrap=$('terminal-wrap');
+  let sY,sH;
+  hRes.addEventListener('mousedown',e=>{sY=e.clientY;sH=termWrap.offsetHeight;
+    document.addEventListener('mousemove',onHMove);document.addEventListener('mouseup',onHUp);e.preventDefault();});
+  function onHMove(e){termWrap.style.height=Math.max(60,sH+(sY-e.clientY))+'px';}
+  function onHUp(){document.removeEventListener('mousemove',onHMove);document.removeEventListener('mouseup',onHUp);}
+
+  // Vertical: sidebar ↔ center
+  const sbRes=$('sidebar-resizer'),sidebar=$('sidebar');
+  let sX1,sW1;
+  sbRes.addEventListener('mousedown',e=>{
+    sX1=e.clientX;sW1=sidebar.offsetWidth;sbRes.classList.add('dragging');
+    document.addEventListener('mousemove',onSBMove);document.addEventListener('mouseup',onSBUp);e.preventDefault();});
+  function onSBMove(e){sidebar.style.width=Math.max(100,Math.min(500,sW1+(e.clientX-sX1)))+'px';}
+  function onSBUp(){sbRes.classList.remove('dragging');document.removeEventListener('mousemove',onSBMove);document.removeEventListener('mouseup',onSBUp);}
+
+  // Vertical: center ↔ chat panel
+  const chatRes=$('chat-resizer'),chatPanel=$('chat-panel');
+  let sX2,sW2;
+  chatRes.addEventListener('mousedown',e=>{
+    sX2=e.clientX;sW2=chatPanel.offsetWidth;chatRes.classList.add('dragging');
+    document.addEventListener('mousemove',onChatMove);document.addEventListener('mouseup',onChatUp);e.preventDefault();});
+  function onChatMove(e){chatPanel.style.width=Math.max(160,Math.min(600,sW2-(e.clientX-sX2)))+'px';}
+  function onChatUp(){chatRes.classList.remove('dragging');document.removeEventListener('mousemove',onChatMove);document.removeEventListener('mouseup',onChatUp);}
+})();
+
+/* ====== CLOCK ====== */
+setInterval(()=>{const d=new Date();$('clock').textContent=d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});},1000);
+
+/* ====== KEYBOARD SHORTCUTS ====== */
+
+document.addEventListener('keydown',e=>{
+  if(e.ctrlKey&&e.key==='s'){e.preventDefault();saveCurrentFile();}
+  if(e.ctrlKey&&e.shiftKey&&e.key==='F'){e.preventDefault();toggleSearch();searchInput.focus();}
+  if(e.ctrlKey&&e.key==='`'){e.preventDefault();termInput.focus();}
+  if(e.ctrlKey&&e.key==='b'){e.preventDefault();toggleChat();}
+  if(e.ctrlKey&&e.key===','){e.preventDefault();openSettings();}
+  if(e.key==='Escape'){closeSettings();closeHistory();}
+});
+
+/* ====== SETTINGS ====== */
+function openSettings(){
+  const ov=$('settings-overlay');
+  ov.classList.add('visible');
+  // Sync dropdowns with current taskbar values
+  $('settings-model').value=modelSelect.value;
+  $('settings-persona').innerHTML=personaSelect.innerHTML;
+  $('settings-persona').value=personaSelect.value;
+  $('settings-gear').textContent=gearVal.textContent;
+  $('settings-modes').textContent=modeVal.textContent;
+  $('settings-ws-status').textContent=ws&&ws.readyState===1?'Connected':'Disconnected';
+  $('settings-ws-status').style.color=ws&&ws.readyState===1?'var(--green)':'#f44';
+  // Request current API key status from server
+  send({type:'builder_cmd',cmd:'get_settings'});
+}
+function closeSettings(){$('settings-overlay').classList.remove('visible');}
+function saveSettings(){
+  const key=$('settings-apikey').value.trim();
+  const xaiKey=$('settings-xai-key') ? $('settings-xai-key').value.trim() : '';
+  const openaiKey=$('settings-openai-key') ? $('settings-openai-key').value.trim() : '';
+  const cerebrasKey=$('settings-cerebras-key') ? $('settings-cerebras-key').value.trim() : '';
+  const model=$('settings-model').value;
+  const persona=$('settings-persona').value;
+  // Send all keys in one shot — server does one atomic .env write
+  const payload={type:'builder_cmd',cmd:'save_settings'};
+  if(key)          payload.api_key=key;
+  if(xaiKey)       payload.xai_api_key=xaiKey;
+  if(openaiKey)    payload.openai_api_key=openaiKey;
+  if(cerebrasKey)  payload.cerebras_api_key=cerebrasKey;
+  if(key||xaiKey||openaiKey||cerebrasKey) send(payload);
+  // Clear fields optimistically
+  if(key){$('settings-apikey').value='';}
+  if(xaiKey){$('settings-xai-key').value='';}
+  if(openaiKey){$('settings-openai-key').value='';}
+  if(cerebrasKey){$('settings-cerebras-key').value='';}
+  // Apply model/persona changes
+  if(model!==modelSelect.value){modelSelect.value=model;modelSelect.dispatchEvent(new Event('change'));}
+  if(persona!==personaSelect.value){personaSelect.value=persona;personaSelect.dispatchEvent(new Event('change'));}
+  closeSettings();
+  termPrint('Settings saved.','info');
+}
+
+/* ====== APPEARANCE / BACKGROUND ENGINE ====== */
+const COLOR_THEMES = {
+  cyber:  [[0,255,120],[150,0,255],[0,100,255],[255,0,180],[0,220,255],[255,255,0]],
+  fire:   [[255,60,0],[255,140,0],[255,0,60],[220,100,0],[255,200,0],[180,0,0]],
+  ice:    [[0,180,255],[100,220,255],[60,100,255],[0,240,220],[180,220,255],[0,100,200]],
+  void:   [[160,0,255],[255,0,200],[80,0,255],[200,0,255],[120,0,180],[255,0,140]],
+  forest: [[0,255,60],[100,220,0],[0,180,30],[60,255,80],[0,140,60],[180,255,0]],
+  mono:   [[220,220,220],[160,160,160],[200,200,200],[180,180,180],[240,240,240],[140,140,140]],
+};
+
+// Base orb templates (position/phase, re-colored per theme)
+const ORB_TEMPLATES = [
+  {x:0.15,y:0.25,r:270,a:0.17,vx:0.000012,vy:0.000008, phase:0},
+  {x:0.75,y:0.15,r:230,a:0.15,vx:-0.000009,vy:0.000011,phase:1.2},
+  {x:0.80,y:0.70,r:310,a:0.13,vx:-0.000007,vy:-0.000010,phase:2.4},
+  {x:0.30,y:0.80,r:200,a:0.12,vx:0.000010,vy:-0.000009,phase:3.8},
+  {x:0.55,y:0.45,r:170,a:0.10,vx:-0.000011,vy:0.000007,phase:5.1},
+  {x:0.90,y:0.40,r:180,a:0.09,vx:0.000008,vy:0.000013, phase:0.7},
+  {x:0.10,y:0.65,r:150,a:0.09,vx:-0.000013,vy:-0.000006,phase:4.2},
+  {x:0.50,y:0.10,r:140,a:0.08,vx:0.000006,vy:0.000014, phase:2.9},
+  {x:0.65,y:0.85,r:160,a:0.08,vx:-0.000010,vy:0.000008,phase:1.8},
+];
+
+// Speed multipliers
+const SPEED_MULT = [0, 0.15, 0.4, 1.0, 2.5];
+
+// Default appearance config
+const AP_DEFAULTS = {style:'orbs',speed:1,count:5,intensity:5,theme:'cyber',scanlines:true,blur:16,opacity:7,fontsize:12};
+let apConfig = Object.assign({}, AP_DEFAULTS);
+
+function loadAppearanceConfig(){
+  try{
+    const saved = localStorage.getItem('sb_appearance');
+    if(saved) Object.assign(apConfig, JSON.parse(saved));
+  }catch(e){}
+}
+
+function saveAppearance(){
+  // Read current slider values into apConfig
+  apConfig.style     = $('ap-style').value;
+  apConfig.speed     = parseInt($('ap-speed').value);
+  apConfig.count     = parseInt($('ap-count').value);
+  apConfig.intensity = parseInt($('ap-intensity').value);
+  apConfig.scanlines = $('ap-scanlines').checked;
+  apConfig.blur      = parseInt($('ap-blur').value);
+  apConfig.opacity   = parseInt($('ap-opacity').value);
+  apConfig.fontsize  = parseInt($('ap-fontsize').value);
+  // theme stored by selectTheme()
+  localStorage.setItem('sb_appearance', JSON.stringify(apConfig));
+  termPrint('✦ Appearance saved.','info');
+}
+
+function resetAppearance(){
+  apConfig = Object.assign({}, AP_DEFAULTS);
+  syncAppearanceControls();
+  applyAppearance();
+}
+
+function syncAppearanceControls(){
+  $('ap-style').value = apConfig.style;
+  $('ap-speed').value = apConfig.speed;
+  $('ap-count').value = apConfig.count;
+  $('ap-intensity').value = apConfig.intensity;
+  $('ap-scanlines').checked = apConfig.scanlines;
+  $('ap-blur').value = apConfig.blur;
+  $('ap-opacity').value = apConfig.opacity;
+  $('ap-fontsize').value = apConfig.fontsize;
+  apSlider('ap-speed','ap-speed-val',['Frozen','Glacial','Slow','Medium','Fast']);
+  apSlider('ap-count','ap-count-val');
+  apSlider('ap-intensity','ap-intensity-val');
+  apSlider('ap-blur','ap-blur-val',null,'px');
+  apSlider('ap-opacity','ap-opacity-val');
+  apSlider('ap-fontsize','ap-fontsize-val',null,'px');
+  document.querySelectorAll('.ap-swatch').forEach(s=>{
+    s.classList.toggle('selected', s.dataset.theme===apConfig.theme);
+  });
+}
+
+function apSlider(id, valId, labels, suffix=''){
+  const v = parseInt(document.getElementById(id).value);
+  const el = document.getElementById(valId);
+  if(labels) el.textContent = labels[v] || v;
+  else el.textContent = v + suffix;
+}
+
+function selectTheme(theme){
+  apConfig.theme = theme;
+  document.querySelectorAll('.ap-swatch').forEach(s=>{
+    s.classList.toggle('selected', s.dataset.theme===theme);
+  });
+  applyAppearance();
+}
+
+function applyAppearance(){
+  // Read current slider state live
+  apConfig.style     = $('ap-style').value;
+  apConfig.speed     = parseInt($('ap-speed').value);
+  apConfig.count     = parseInt($('ap-count').value);
+  apConfig.intensity = parseInt($('ap-intensity').value);
+  apConfig.scanlines = $('ap-scanlines').checked;
+  apConfig.blur      = parseInt($('ap-blur').value);
+  apConfig.opacity   = parseInt($('ap-opacity').value);
+  apConfig.fontsize  = parseInt($('ap-fontsize').value);
+
+  // Apply font size globally
+  document.body.style.fontSize = apConfig.fontsize + 'px';
+
+  // Apply panel blur via CSS variable
+  document.documentElement.style.setProperty('--panel-blur', apConfig.blur + 'px');
+
+  // Apply panel opacity (affects all glass panels via CSS var)
+  const op = (apConfig.opacity / 10).toFixed(2);
+  document.documentElement.style.setProperty('--panel-opacity', op);
+
+  // Canvas picks up apConfig automatically on next frame
+}
+
+function switchSettingsTab(tab){
+  document.querySelectorAll('.sm-tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.sm-panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('stab-'+tab).classList.add('active');
+  document.getElementById('spanel-'+tab).classList.add('active');
+}
+
+/* ── Live telemetry panel ── */
+function _applyTelemetry(d){
+  function _set(id,v){const el=$(id);if(el)el.textContent=v||'—';}
+  function _bar(barId,valId,pct,label){
+    const b=$(barId);if(b)b.style.width=Math.min(100,Math.round(pct*100))+'%';
+    const v=$(valId);if(v)v.textContent=label;
+  }
+  _set('tl-gait', d.gait);
+  _set('tl-rhythm', d.rhythm_mode);
+  _set('tl-aperture', d.aperture_mode);
+  _set('tl-behavior', d.behavior_state);
+  _set('tl-loops', d.loop_count);
+  _set('tl-elapsed', d.elapsed_ms ? (d.elapsed_ms/1000).toFixed(2)+'s' : '—');
+  _bar('tl-drift-bar','tl-drift-val', d.drift_pressure || 0, (d.drift_pressure||0).toFixed(3));
+  _bar('tl-stability-bar','tl-stability-val', d.stability_score||0, (d.stability_score||0).toFixed(3));
+  _set('tl-last-tool', d.last_tool||'—');
+  const msEl=$('tl-last-tool-ms');
+  if(msEl) msEl.textContent = d.last_tool&&d.last_tool_ms ? (d.last_tool_ms/1000).toFixed(2)+'s' : '';
+  _set('tl-persona-model', (d.persona||'—')+' · '+(d.model||'—'));
+}
+
+// ── Canvas BG renderer ──
+(function(){
+  const canvas = document.getElementById('bg-canvas');
+  const ctx = canvas.getContext('2d');
+  let W, H, t = 0;
+  function resize(){ W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function buildOrbs(){
+    const colors = COLOR_THEMES[apConfig.theme] || COLOR_THEMES.cyber;
+    const n = apConfig.count;
+    return ORB_TEMPLATES.slice(0, n).map((tpl, i) => ({
+      ...tpl,
+      cr: colors[i % colors.length],
+    }));
+  }
+
+  function drawOrbs(orbs, speedMult, intensityScale){
+    for(const o of orbs){
+      const px = (o.x + Math.sin(t * o.vx * speedMult * 1000 + o.phase) * 0.18) * W;
+      const py = (o.y + Math.cos(t * o.vy * speedMult * 1000 + o.phase * 0.7) * 0.15) * H;
+      const alpha = Math.min(1, o.a * intensityScale);
+      const grad = ctx.createRadialGradient(px,py,0, px,py, o.r);
+      const [r,g,b] = o.cr;
+      grad.addColorStop(0, `rgba(${r},${g},${b},${alpha.toFixed(3)})`);
+      grad.addColorStop(0.5, `rgba(${r},${g},${b},${(alpha*0.35).toFixed(3)})`);
+      grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(px,py, o.r, 0, Math.PI*2); ctx.fill();
+    }
+  }
+
+  function drawNebula(orbs, speedMult, intensityScale){
+    // Nebula: many overlapping large soft gradients
+    for(const o of orbs){
+      const px = (o.x + Math.sin(t * o.vx * speedMult * 800 + o.phase) * 0.30) * W;
+      const py = (o.y + Math.cos(t * o.vy * speedMult * 800 + o.phase) * 0.25) * H;
+      const alpha = Math.min(1, o.a * intensityScale * 0.8);
+      const grad = ctx.createRadialGradient(px,py,0, px,py, o.r * 1.8);
+      const [r,g,b] = o.cr;
+      grad.addColorStop(0, `rgba(${r},${g},${b},${alpha.toFixed(3)})`);
+      grad.addColorStop(0.3, `rgba(${r},${g},${b},${(alpha*0.5).toFixed(3)})`);
+      grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(px,py, o.r*1.8, 0, Math.PI*2); ctx.fill();
+    }
+  }
+
+  // Particles pool — persistent across frames
+  let particles = [];
+  function ensureParticles(n, colors){
+    while(particles.length < n){
+      const c = colors[Math.floor(Math.random()*colors.length)];
+      particles.push({
+        x: Math.random()*W, y: Math.random()*H,
+        vx:(Math.random()-0.5)*0.3, vy:(Math.random()-0.5)*0.3,
+        r: Math.random()*2+0.5,
+        a: Math.random()*0.5+0.1,
+        cr: c,
+      });
+    }
+    particles.length = n;
+  }
+
+  function drawParticles(intensityScale, speedMult){
+    const colors = COLOR_THEMES[apConfig.theme] || COLOR_THEMES.cyber;
+    const n = apConfig.count * 30;
+    ensureParticles(n, colors);
+    for(const p of particles){
+      p.x += p.vx * speedMult;
+      p.y += p.vy * speedMult;
+      if(p.x<0)p.x=W; if(p.x>W)p.x=0;
+      if(p.y<0)p.y=H; if(p.y>H)p.y=0;
+      const [r,g,b] = p.cr;
+      ctx.fillStyle = `rgba(${r},${g},${b},${Math.min(1,p.a*intensityScale)})`;
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill();
+    }
+  }
+
+  // Pulse mode: concentric rings expanding from center orb positions
+  function drawPulse(orbs, speedMult, intensityScale){
+    for(const o of orbs){
+      const px = o.x * W;
+      const py = o.y * H;
+      const [r,g,b] = o.cr;
+      for(let k=0;k<3;k++){
+        const phase = ((t * speedMult * 0.5 + k*120) % 360) / 360;
+        const radius = phase * Math.max(W,H) * 0.5;
+        const alpha = (1 - phase) * o.a * intensityScale;
+        if(alpha<0.005) continue;
+        ctx.strokeStyle = `rgba(${r},${g},${b},${alpha.toFixed(3)})`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(px,py,radius,0,Math.PI*2); ctx.stroke();
+      }
+    }
+  }
+
+  function draw(){
+    t++;
+    const speedMult = SPEED_MULT[apConfig.speed] || 0.4;
+    const intensityScale = apConfig.intensity / 5;
+    const style = apConfig.style;
+
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle = '#060610'; ctx.fillRect(0,0,W,H);
+
+    if(style !== 'off'){
+      const orbs = buildOrbs();
+      if(style==='orbs')      drawOrbs(orbs, speedMult, intensityScale);
+      else if(style==='nebula')  drawNebula(orbs, speedMult, intensityScale);
+      else if(style==='particles') drawParticles(intensityScale, speedMult);
+      else if(style==='pulse')   drawPulse(orbs, speedMult, intensityScale);
+    }
+
+    if(apConfig.scanlines){
+      ctx.fillStyle='rgba(0,0,0,0.055)';
+      for(let y=0;y<H;y+=4){ctx.fillRect(0,y,W,2);}
+    }
+
+    requestAnimationFrame(draw);
+  }
+
+  loadAppearanceConfig();
+  syncAppearanceControls();
+  applyAppearance();
+  draw();
+})();
+
+/* ====== RELAUNCH ====== */
+function relaunchServer(){
+  if(!confirm('Relaunch SparkByte server? The UI will reconnect automatically.')) return;
+  termPrint('⟳ Sending relaunch signal…','warn');
+  if(ws && ws.readyState===WebSocket.OPEN){
+    ws.send(JSON.stringify({type:'restart_server'}));
+  } else {
+    termPrint('⚠ Not connected — start the server manually.','error');
+  }
+}
+
+/* ====== FILE VIEWER LOGIC ====== */
+function activateFilesTab(){
+  deactivateForgeTab();
+  fileViewerActive = true;
+  // Hide other panes
+  $('editor-wrap').classList.add('hidden');
+  $('terminal-wrap').classList.add('hidden');
+  $('chat-panel').classList.add('hidden');
+  // Show sidebar as main view
+  $('sidebar').classList.remove('hidden');
+  renderTabs();
+}
+function hideFileViewer(){
+  if(!fileViewerActive) return;
+  fileViewerActive = false;
+  $('sidebar').classList.add('hidden');
+  $('editor-wrap').classList.remove('hidden');
+  $('terminal-wrap').classList.remove('hidden');
+  $('chat-panel').classList.remove('hidden');
+  renderTabs();
+}
+
+/* ====== BOOT ====== */
+connect();
+termPrint('⚡ JL_OS SparkByte Terminal','info');
+termPrint('Type commands, or use the file explorer. Ctrl+S save, Ctrl+` terminal, Ctrl+B toggle chat.','info');
+</script>
+</body></html>

@@ -1,0 +1,16 @@
+2026-04-06 04:33:16,429 - INFO - engine_core.py - [EngineCore] Loaded master config with 2 core rules.
+2026-04-06 04:33:16,429 - INFO - engine_core.py - [EngineCore] Loaded master config with 2 core rules.
+2026-04-06 04:33:16,434 - INFO - engine_core.py - [EngineCore] Backends configured (brain='google-gemini', tool='google-gemini').
+2026-04-06 04:33:16,434 - INFO - engine_core.py - [EngineCore] Backends configured (brain='google-gemini', tool='google-gemini').
+2026-04-06 04:33:16,441 - WARNING - agent_validation.py - [AgentValidation] Agent schema file is missing at C:\Users\J_lin\Desktop\JL_Engine (3)\JL_Engine-local\config\agent_schema.json; falling back to baseline validation.
+2026-04-06 04:33:16,442 - INFO - engine_core.py - [EngineCore] Agent set to 'SparkByte' (file='fat_agents/SparkByte_Full.json', drive_type=None).
+2026-04-06 04:33:16,443 - INFO - engine_core.py - [EngineCore] Behavior profile set to 'expressive'.
+2026-04-06 04:33:16,444 - INFO - engine_core.py - [EngineCore] Agent set to 'SparkByte' (file='fat_agents/SparkByte_Full.json', drive_type=None).
+2026-04-06 04:33:16,457 - WARNING - agent_validation.py - [AgentValidation] Agent schema file is missing at C:\Users\J_lin\Desktop\JL_Engine (3)\JL_Engine-local\config\agent_schema.json; falling back to baseline validation.
+2026-04-06 04:33:16,458 - INFO - engine_core.py - [EngineCore] Agent set to 'SparkByte' (file='fat_agents/SparkByte_Full.json', drive_type=None).
+2026-04-06 04:33:16,458 - INFO - engine_core.py - [EngineCore] Behavior profile set to 'expressive'.
+2026-04-06 04:40:44,291 - INFO - engine_core.py - [EngineCore] Loaded master config with 2 core rules.
+2026-04-06 04:40:44,294 - INFO - engine_core.py - [EngineCore] Backends configured (brain='google-gemini', tool='google-gemini').
+2026-04-06 04:40:44,296 - WARNING - agent_validation.py - [AgentValidation] Agent schema file is missing at C:\Users\J_lin\Desktop\JL_Engine (3)\JL_Engine-local\config\agent_schema.json; falling back to baseline validation.
+2026-04-06 04:40:44,297 - INFO - engine_core.py - [EngineCore] Agent set to 'SparkByte' (file='fat_agents/SparkByte_Full.json', drive_type=None).
+2026-04-06 04:40:44,297 - INFO - engine_core.py - [EngineCore] Behavior profile set to 'expressive'.

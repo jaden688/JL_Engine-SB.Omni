@@ -1,0 +1,189 @@
+- main [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - heading "RIPPLE SCOPE LIVE" [level=1] [ref=e5]
+      - paragraph [ref=e6]: Steer the Splash Garden in real time, inspect the hidden delay layer, and watch unseen vision stop pretending it is just a prompt.
+    - generic [ref=e9]: Service online | 1 repos | 10 files
+  - generic [ref=e10]:
+    - generic [ref=e11]:
+      - generic [ref=e12]:
+        - generic [ref=e13]:
+          - heading "FIELD INPUT" [level=2] [ref=e14]
+          - generic [ref=e15]: Live single render and bench runner
+        - generic [ref=e16]:
+          - generic [ref=e17]:
+            - generic [ref=e18]: Prompt
+            - textbox "Prompt" [ref=e19]: unseen vision radar, emotional weather, hidden causality, ripples in the glass
+          - generic [ref=e20]:
+            - generic [ref=e21]: Guide Image
+            - button "Guide Image" [active] [ref=e22]
+          - generic [ref=e23]:
+            - 'figure "Guide image: unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-balanced-field-blue.png" [ref=e185]':
+              - img "Guide image preview" [ref=e186]
+              - generic [ref=e25]: "Guide image: unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-balanced-field-blue.png"
+            - figure "Derived edge pressure map at 96x96." [ref=e187]:
+              - img "Derived edge map preview" [ref=e188]
+              - generic [ref=e27]: Derived edge pressure map at 96x96.
+          - generic [ref=e28]:
+            - generic [ref=e29]:
+              - generic [ref=e30]: Width
+              - spinbutton "Width" [ref=e31]: "96"
+            - generic [ref=e32]:
+              - generic [ref=e33]: Height
+              - spinbutton "Height" [ref=e34]: "96"
+            - generic [ref=e35]:
+              - generic [ref=e36]: Steps
+              - spinbutton "Steps" [ref=e37]: "72"
+          - generic [ref=e38]:
+            - generic [ref=e39]:
+              - generic [ref=e40]: Energy
+              - spinbutton "Energy" [ref=e41]: "1.00"
+            - generic [ref=e42]:
+              - generic [ref=e43]: Delay Gain
+              - spinbutton "Delay Gain" [ref=e44]: "1.00"
+            - generic [ref=e45]:
+              - generic [ref=e46]: Structure Gain
+              - spinbutton "Structure Gain" [ref=e47]: "1.00"
+            - generic [ref=e48]:
+              - generic [ref=e49]: Spectral Tilt
+              - spinbutton "Spectral Tilt" [ref=e50]: "0.00"
+            - generic [ref=e51]:
+              - generic [ref=e52]: Ring Scale
+              - spinbutton "Ring Scale" [ref=e53]: "1.00"
+          - generic [ref=e54]:
+            - button "Pulse Render" [ref=e55] [cursor=pointer]
+            - button "Run Bench" [ref=e56] [cursor=pointer]
+            - button "Load Weird Sample" [ref=e57] [cursor=pointer]
+          - generic [ref=e58]:
+            - strong [ref=e189]: Working.
+            - text: Running the multi-case bench. This is the part where the field gets audited instead of merely admired.
+      - generic [ref=e60]:
+        - generic [ref=e61]:
+          - heading "BENCH HIGHLIGHTS" [level=2] [ref=e62]
+          - generic [ref=e63]: Delay, structure, spectral drift
+        - generic [ref=e64]:
+          - generic [ref=e65]:
+            - generic [ref=e66]:
+              - generic [ref=e67]: Most Delay-Driven
+              - strong [ref=e68]: delay-oracle
+            - generic [ref=e69]:
+              - generic [ref=e70]: Most Structural
+              - strong [ref=e71]: structure-lock
+            - generic [ref=e72]:
+              - generic [ref=e73]: Most Spectral
+              - strong [ref=e74]: spectral-echo
+          - generic [ref=e75]:
+            - article [ref=e126]:
+              - heading "Balanced Field" [level=3] [ref=e127]
+              - paragraph [ref=e128]: Baseline unseen-vision render with the hub and ring held in balance.
+              - generic [ref=e129]:
+                - figure "RGB" [ref=e130]:
+                  - img "Balanced Field rgb" [ref=e131]
+                  - generic [ref=e132]: RGB
+                - figure "Delay" [ref=e133]:
+                  - img "Balanced Field delay" [ref=e134]
+                  - generic [ref=e135]: Delay
+                - figure "Sources" [ref=e136]:
+                  - img "Balanced Field source map" [ref=e137]
+                  - generic [ref=e138]: Sources
+            - article [ref=e139]:
+              - heading "Delay Oracle" [level=3] [ref=e140]
+              - paragraph [ref=e141]: Pushes the hidden delay layer harder so arrival-order starts steering the scene.
+              - generic [ref=e142]:
+                - figure "RGB" [ref=e143]:
+                  - img "Delay Oracle rgb" [ref=e144]
+                  - generic [ref=e145]: RGB
+                - figure "Delay" [ref=e146]:
+                  - img "Delay Oracle delay" [ref=e147]
+                  - generic [ref=e148]: Delay
+                - figure "Sources" [ref=e149]:
+                  - img "Delay Oracle source map" [ref=e150]
+                  - generic [ref=e151]: Sources
+            - article [ref=e152]:
+              - heading "Structure Lock" [level=3] [ref=e153]
+              - paragraph [ref=e154]: Leans into lensing and composition to see whether the form stabilizes first.
+              - generic [ref=e155]:
+                - figure "RGB" [ref=e156]:
+                  - img "Structure Lock rgb" [ref=e157]
+                  - generic [ref=e158]: RGB
+                - figure "Delay" [ref=e159]:
+                  - img "Structure Lock delay" [ref=e160]
+                  - generic [ref=e161]: Delay
+                - figure "Sources" [ref=e162]:
+                  - img "Structure Lock source map" [ref=e163]
+                  - generic [ref=e164]: Sources
+            - article [ref=e165]:
+              - heading "Spectral Echo" [level=3] [ref=e166]
+              - paragraph [ref=e167]: Separates channel personalities so the field reveals color-phase drift.
+              - generic [ref=e168]:
+                - figure "RGB" [ref=e169]:
+                  - img "Spectral Echo rgb" [ref=e170]
+                  - generic [ref=e171]: RGB
+                - figure "Delay" [ref=e172]:
+                  - img "Spectral Echo delay" [ref=e173]
+                  - generic [ref=e174]: Delay
+                - figure "Sources" [ref=e175]:
+                  - img "Spectral Echo source map" [ref=e176]
+                  - generic [ref=e177]: Sources
+          - generic [ref=e178]:
+            - link "Bench Report" [ref=e179] [cursor=pointer]:
+              - /url: /artifacts/live/bench/638a81bbb44f/index.html
+            - link "Bench Manifest" [ref=e180] [cursor=pointer]:
+              - /url: /artifacts/live/bench/638a81bbb44f/unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-bench.json
+    - generic [ref=e77]:
+      - generic [ref=e78]:
+        - generic [ref=e79]:
+          - heading "LIVE FIELD" [level=2] [ref=e80]
+          - generic [ref=e81]: unseen vision radar, emotional weather, hidden causality, ripples in the glass | 96x96 | 72 steps
+        - generic [ref=e82]:
+          - generic [ref=e83]:
+            - figure "RGB field" [ref=e84]:
+              - img "RGB field output" [ref=e85]
+              - generic [ref=e86]: RGB field
+            - figure "Delay field" [ref=e87]:
+              - img "Delay field output" [ref=e88]
+              - generic [ref=e89]: Delay field
+          - generic [ref=e90]:
+            - figure "Source map" [ref=e91]:
+              - img "Source map" [ref=e92]
+              - generic [ref=e93]: Source map
+            - figure "Red channel" [ref=e94]:
+              - img "Red channel" [ref=e95]
+              - generic [ref=e96]: Red channel
+            - figure "Green channel" [ref=e97]:
+              - img "Green channel" [ref=e98]
+              - generic [ref=e99]: Green channel
+            - figure "Blue channel" [ref=e100]:
+              - img "Blue channel" [ref=e101]
+              - generic [ref=e102]: Blue channel
+          - generic [ref=e103]:
+            - generic [ref=e104]:
+              - generic [ref=e105]: Seed
+              - strong [ref=e106]: "8308560725218466000"
+            - generic [ref=e107]:
+              - generic [ref=e108]: Delay Mean
+              - strong [ref=e109]: "0.606"
+            - generic [ref=e110]:
+              - generic [ref=e111]: Spectral Split
+              - strong [ref=e112]: "0.060"
+            - generic [ref=e113]:
+              - generic [ref=e114]: Sources
+              - strong [ref=e115]: "12"
+            - generic [ref=e116]:
+              - generic [ref=e117]: Guide
+              - strong [ref=e118]: unseen-vision-radar-emotional-weather-hidden-causality-ripples-in-the-glass-balanced-field-blue.png
+          - generic [ref=e181]:
+            - link "RGB PNG" [ref=e190] [cursor=pointer]:
+              - /url: /artifacts/live/splash/5625d501aa15/rgb.png
+            - link "Delay PNG" [ref=e191] [cursor=pointer]:
+              - /url: /artifacts/live/splash/5625d501aa15/delay.png
+            - link "Meta JSON" [ref=e192] [cursor=pointer]:
+              - /url: /artifacts/live/splash/5625d501aa15/meta.json
+      - generic [ref=e119]:
+        - generic [ref=e120]:
+          - heading "BENCH REPORT" [level=2] [ref=e121]
+          - generic [ref=e122]: Embedded live gallery
+        - iframe [ref=e124]:
+          - generic [ref=f1e2]:
+            - strong [ref=f1e3]: Booting Ripple Scope
+            - text: The bench report will load automatically after the first field pulse.

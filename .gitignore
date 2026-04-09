@@ -1,0 +1,43 @@
+# Secrets
+.env
+
+# Database
+*.db
+*.sqlite
+
+# Julia artifacts
+Manifest.toml
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+
+# Temp files from execute_code tool
+tmp_exec_*.py
+tmp_exec_*.jl
+
+# Telemetry & logs
+full_telemetry.jsonl
+telemetry_logs/
+*.jsonl
+thought_log.txt
+telemetry_test.txt
+
+# Dynamic tool registry (runtime-generated)
+dynamic_tools_registry.json
+dynamic_tools.jl
+
+# Inspection / scratch dirs
+_mcp_inspect/
+mcp.zip
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.CondaPkg/
+
+# OS
+.DS_Store
+Thumbs.db
