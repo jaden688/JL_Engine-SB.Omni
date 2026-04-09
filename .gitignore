@@ -41,3 +41,4 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+pitreader_backup_copy/
