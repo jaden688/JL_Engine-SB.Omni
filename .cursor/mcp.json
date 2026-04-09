@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "sparkbyte": {
+      "command": "python",
+      "args": [
+        "C:\\Users\\J_lin\\Desktop\\JL_Engine (3)\\jl-vs\\vscode-main\\copilot-separate-leopard\\mcp_server\\server.py"
+      ]
+    }
+  }
+}
