@@ -339,6 +339,7 @@ body{background:transparent;color:var(--green);font-family:'Consolas','Courier N
   <div class="tb-sep"></div>
   <span style="cursor:pointer;font-size:14px;color:var(--dim);transition:0.15s;" onclick="openSettings()" title="Settings (Ctrl+,)">⚙</span>
   <span style="cursor:pointer;font-size:12px;color:var(--dim);transition:0.15s;letter-spacing:1px;" onclick="openHistory()" title="Session History">◷ HISTORY</span>
+  <button id="focus-btn" onclick="toggleFocusMode()" title="Focus mode — chat only" style="background:rgba(0,200,255,0.1);border:1px solid rgba(0,200,255,0.3);color:#00c8ff;border-radius:3px;padding:1px 7px;font-family:inherit;font-size:10px;cursor:pointer;letter-spacing:1px;transition:0.15s;" onmouseover="this.style.background='rgba(0,200,255,0.22)'" onmouseout="this.style.background='rgba(0,200,255,0.1)'">◈ FOCUS</button>
   <button id="relaunch-btn" onclick="relaunchServer()" title="Relaunch server (reconnects automatically)" style="background:rgba(255,80,0,0.15);border:1px solid rgba(255,80,0,0.35);color:#ff6030;border-radius:3px;padding:1px 7px;font-family:inherit;font-size:10px;cursor:pointer;letter-spacing:1px;transition:0.15s;" onmouseover="this.style.background='rgba(255,80,0,0.28)'" onmouseout="this.style.background='rgba(255,80,0,0.15)'">↺ RELAUNCH</button>
   <span style="color:var(--dim);font-size:10px;" id="clock"></span>
 </div>
@@ -360,7 +361,7 @@ body{background:transparent;color:var(--green);font-family:'Consolas','Courier N
       <input type="text" id="search-input" placeholder="Search in files..." autocomplete="off">
     </div>
     <div id="search-results"></div>
-    <div id="tree-wrap"><div id="tree-content" style="color:var(--dim);padding:10px;font-size:11px;">loading...</div></div>
+    <div id="tree-wrap"><div id="tree-content" style="color:var(--dim);padding:10px;font-size:11px;">Click ↻ to load files</div></div>
   </div>
 
   <div class="v-resizer" id="sidebar-resizer"></div>
@@ -769,7 +770,7 @@ function abortGeneration(){
 }
 function connect(){
   ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
-  ws.onopen=()=>{sbStatus.textContent='● Connected';sbStatus.style.color='var(--green)';loadFileTree();loadPersonas();};
+  ws.onopen=()=>{sbStatus.textContent='● Connected';sbStatus.style.color='var(--green)';loadPersonas();};
   ws.onclose=()=>{sbStatus.textContent='● Disconnected';sbStatus.style.color='#f44';_setGenerating(false);setTimeout(connect,1500);};
   ws.onmessage=e=>{
     const d=JSON.parse(e.data);
@@ -1730,6 +1731,37 @@ function _applyTelemetry(d){
   syncAppearanceControls();
   applyAppearance();
   draw();
+})();
+
+/* ====== FOCUS MODE ====== */
+let _focusMode = false;
+function toggleFocusMode(on){
+  _focusMode = (on !== undefined) ? on : !_focusMode;
+  const main = $('main'), sidebar = $('sidebar'), center = document.getElementById('center');
+  const sbRes = $('sidebar-resizer'), chatRes = $('chat-resizer');
+  const chatPanel = $('chat-panel'), btn = $('focus-btn');
+  if(_focusMode){
+    sidebar.style.display='none';
+    center && (center.style.display='none');
+    sbRes && (sbRes.style.display='none');
+    chatRes && (chatRes.style.display='none');
+    chatPanel.style.width='100%'; chatPanel.style.minWidth='100%';
+    chatPanel.classList.remove('collapsed');
+    if(btn){btn.textContent='◈ EXIT FOCUS'; btn.style.background='rgba(0,200,255,0.22)';}
+  } else {
+    sidebar.style.display='';
+    center && (center.style.display='');
+    sbRes && (sbRes.style.display='');
+    chatRes && (chatRes.style.display='');
+    chatPanel.style.width=''; chatPanel.style.minWidth='';
+    if(btn){btn.textContent='◈ FOCUS'; btn.style.background='rgba(0,200,255,0.1)';}
+  }
+}
+// Auto focus mode on mobile
+(function(){
+  const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || window.innerWidth < 768;
+  if(isMobile) toggleFocusMode(true);
+  window.addEventListener('resize',()=>{ if(window.innerWidth<768 && !_focusMode) toggleFocusMode(true); });
 })();
 
 /* ====== RELAUNCH ====== */
