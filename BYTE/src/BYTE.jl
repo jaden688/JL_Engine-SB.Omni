@@ -808,10 +808,20 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
             "schema_format"   => "openai",
             "uses_gemini_api" => false,
         ),
+        "azure" => Dict(
+            "endpoint"        => "",                          # built dynamically per deployment
+            "env_key"         => "AZURE_AI_API_KEY",
+            "supports_tools"  => true,
+            "supports_top_p"  => true,
+            "supports_vision" => false,
+            "schema_format"   => "openai",
+            "uses_gemini_api" => false,
+        ),
     )
 
     # ── Model → provider routing ──────────────────────────────────────────────
     # Explicit model lists win. Prefix matching is the fallback.
+    # Azure deployments use "azure:" prefix e.g. "azure:grok-4-20-reasoning"
     _XAI_RESPONSES_MODELS = ["grok-4.20-multi-agent-0309", "grok-4.20-reasoning"]
     _XAI_RESPONSES_NO_TOOL_MODELS = Set(["grok-4.20-multi-agent-0309"])
     # Gemma models don't support function calling or thinking_config — strip both
@@ -822,7 +832,8 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
         "llama3.3-70b", "llama3.1-70b", "llama3.1-8b",
         "qwen-3-32b", "gpt-oss-120b", "gpt-oss-70b",
     ]
-    provider = if _current_model in _XAI_RESPONSES_MODELS;  "xai_responses"
+    provider = if startswith(_current_model, "azure:");      "azure"
+    elseif _current_model in _XAI_RESPONSES_MODELS;         "xai_responses"
     elseif _current_model in _CEREBRAS_MODELS;              "cerebras"
     elseif startswith(_current_model, "grok-");             "xai"
     elseif startswith(_current_model, "gpt-") || startswith(_current_model, "o4-") || startswith(_current_model, "o3-"); "openai"
@@ -1240,7 +1251,16 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                 _ws_send(ws, JSON.json(Dict("type"=>"spark","text"=>wrn))); break
             end
 
-            actual_model = provider == "ollama" ? replace(_current_model,"ollama:"=>"") : _current_model
+            actual_model = if provider == "ollama";  replace(_current_model, "ollama:"=>"")
+                           elseif provider == "azure"; replace(_current_model, "azure:"=>"")
+                           else; _current_model
+                           end
+
+            # Azure: build per-deployment endpoint from AZURE_OPENAI_ENDPOINT env var
+            if provider == "azure"
+                base = rstrip(get(ENV, "AZURE_OPENAI_ENDPOINT", ""), '/')
+                api_url = "$base/openai/deployments/$actual_model/chat/completions?api-version=2024-12-01-preview"
+            end
 
             # Build payload from profile — profile is the single source of truth
             payload = Dict{String,Any}("model"=>actual_model, "messages"=>oai_messages,
