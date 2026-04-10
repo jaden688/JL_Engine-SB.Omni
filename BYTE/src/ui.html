@@ -768,7 +768,7 @@ function abortGeneration(){
   _toolActiveClear();
 }
 function connect(){
-  ws=new WebSocket('ws://'+location.host+'/ws');
+  ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
   ws.onopen=()=>{sbStatus.textContent='● Connected';sbStatus.style.color='var(--green)';loadFileTree();loadPersonas();};
   ws.onclose=()=>{sbStatus.textContent='● Disconnected';sbStatus.style.color='#f44';_setGenerating(false);setTimeout(connect,1500);};
   ws.onmessage=e=>{
