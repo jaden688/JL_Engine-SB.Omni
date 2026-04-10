@@ -113,3 +113,9 @@ end
 # -- tool_greet_user | 2026-04-08 18:14:52 | PASS --
 # args:   {}
 # result: {"message":"Hello, friend! SparkByte at your service."}
+# -- tool_greet_user | 2026-04-09 13:39:37 | PASS --
+# args:   {}
+# result: {"message":"Well, hello there! SparkByte here, fully online and ready to cause some productive chaos. What's on the agenda today?"}
+# -- tool_sum_numbers | 2026-04-09 13:41:25 | FAIL --
+# args:   {}
+# result: {"error":"KeyError(\"numbers\")"}

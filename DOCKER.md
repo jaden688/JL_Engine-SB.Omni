@@ -1,4 +1,18 @@
-# SparkByte Docker
+# SparkByte Docker & ops
+
+## Quick start
+
+1. Copy env template: **`cp .env.example .env`** (or copy on Windows) and add API keys you use.
+2. **Compose:** `docker compose up --build`
+3. **Smoke test** (host, with stack running): `powershell -File scripts/smoke_endpoints.ps1`
+
+| Surface | URL |
+|--------|-----|
+| SparkByte UI / WebSocket | `http://localhost:${SPARKBYTE_PUBLIC_PORT:-8081}` |
+| SparkByte health | `GET http://localhost:8081/health` |
+| **A2A** (agent card + JSON-RPC) | `http://localhost:${A2A_PUBLIC_PORT:-8082}` |
+| A2A health | `GET http://localhost:8082/health` |
+| Agent card | `GET http://localhost:8082/.well-known/agent.json` |
 
 ## Build
 
@@ -6,23 +20,22 @@
 docker build -t sparkbyte .
 ```
 
-## Run
+## Run (single container)
 
 ```bash
-docker run --rm -it -p 8081:8081 --env-file .env \
+docker run --rm -it -p 8081:8081 -p 8082:8082 --env-file .env \
   -e SPARKBYTE_STATE_DIR=/app/runtime \
   -v sparkbyte-state:/app/runtime \
   sparkbyte
 ```
 
-The container starts the SparkByte app on `http://127.0.0.1:8081/`.
-Health status is available at `http://127.0.0.1:8081/health`.
-Browser auto-launch is disabled inside Docker, but the app still boots a headless Playwright Chromium instance for `browse_url`.
+- Map **both** ports if you use **A2A** (`8082` inside the image).
+- Browser auto-launch is disabled in Docker; the app still starts **headless Chromium** for `browse_url` where configured.
 
-If you want the container to reach an Ollama instance running on your host, add:
+### Host Ollama
 
 ```bash
-docker run --rm -it -p 8081:8081 --env-file .env \
+docker run --rm -it -p 8081:8081 -p 8082:8082 --env-file .env \
   --add-host=host.docker.internal:host-gateway \
   -e SPARKBYTE_STATE_DIR=/app/runtime \
   -e OLLAMA_BASE_URL=http://host.docker.internal:11434 \
@@ -30,20 +43,33 @@ docker run --rm -it -p 8081:8081 --env-file .env \
   sparkbyte
 ```
 
-If port `8081` is already taken, remap the host side only, for example `-p 18081:8081`.
-
 ## Compose
 
 ```bash
 docker compose up --build
 ```
 
+`compose.yaml` loads `.env`, maps **8081** (SparkByte) and **8082** (A2A), and persists state in volume `sparkbyte-state` → `/app/runtime`.
+
+## A2A (production notes)
+
+- Set **`A2A_API_KEY`** in `.env` for any **public** listener; clients send `Authorization: Bearer <key>`.
+- Set **`A2A_PUBLIC_URL`** to the **external** base URL (e.g. `https://agent.example.com`) so `/.well-known/agent.json` advertises the correct endpoint behind a reverse proxy.
+- JSON-RPC: **`POST /`** with methods such as `tasks/send` / `tasks/get` (see `a2a_server.jl`).
+
+## Julian bridge (optional)
+
+If **`JulianMetaMorph/JulianMetaMorph`** exists in the repo (copied into the image), SparkByte sets **`JULIAN_ROOT`** / **`JULIAN_DB`** at boot when unset. For **autonomous curiosity hunts**, set **`JULIAN_AUTONOMOUS_SECONDS`** (e.g. `3600`); `0` = off.
+
+- **`GITHUB_TOKEN`** in `.env` improves GitHub rate limits for Julian hunts.
+- **MCP** (`mcp_server/server.py`): defaults **`JULIAN_DB`** to `JulianMetaMorph/JulianMetaMorph/data/quarry.db` under the project root unless **`JULIAN_DB`** is set.
+
+## Environment reference
+
+See **`.env.example`** for all variables (SparkByte, A2A, Julian, LLM keys, Ollama).
+
 ## Notes
 
-- The Docker image targets the root SparkByte app, not the nested `JulianMetaMorph` companion project.
-- The Dockerfile now uses a multi-stage build so dependency install and Julia precompile stay cached while the final runtime image stays cleaner.
-- `run_command` and the builder terminal now use PowerShell on Windows and a POSIX shell on Linux/macOS, so tool execution works inside the container.
-- Builder file operations now normalize paths for Linux containers instead of assuming Windows backslashes everywhere.
-- Ollama can be routed to the host via `OLLAMA_BASE_URL`; `compose.yaml` defaults that to `http://host.docker.internal:11434`.
-- `compose.yaml` now loads `.env` into the container directly instead of relying only on shell interpolation.
-- Runtime state now lives under `SPARKBYTE_STATE_DIR` when set. In Docker and Compose that defaults to `/app/runtime`, which is mounted as a named volume so SQLite, telemetry, health logs, and forged-tool state survive container restarts.
+- Multi-stage **Dockerfile** caches Julia precompile; runtime exposes **8081** and **8082**.
+- `run_command` uses PowerShell on Windows and POSIX shell on Linux (including the container).
+- Runtime state: **`SPARKBYTE_STATE_DIR`** (default `/app/runtime` in Compose) holds SQLite, telemetry, forged tools, etc.

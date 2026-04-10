@@ -115,6 +115,14 @@ body{background:transparent;color:var(--green);font-family:'Consolas','Courier N
 #chat-input-wrap label{cursor:pointer;color:var(--dim);font-size:14px;transition:0.15s;}
 #chat-input-wrap label.has-file{color:var(--green);}
 #chat-input-wrap input[type=file]{display:none;}
+/* Card drop zone */
+#card-drop-overlay{position:absolute;inset:0;background:rgba(0,255,153,0.07);border:2px dashed var(--green);border-radius:6px;display:none;align-items:center;justify-content:center;flex-direction:column;gap:8px;z-index:50;pointer-events:none;backdrop-filter:blur(4px);}
+#card-drop-overlay .drop-icon{font-size:32px;animation:pulse 1.2s infinite;}
+#card-drop-overlay .drop-label{font-size:12px;color:var(--green);letter-spacing:2px;text-transform:uppercase;}
+#card-drop-overlay.active{display:flex;}
+#card-badge{display:none;align-items:center;gap:5px;background:rgba(0,255,153,0.12);border:1px solid rgba(0,255,153,0.3);border-radius:4px;padding:2px 8px;font-size:10px;color:var(--green);letter-spacing:1px;cursor:pointer;white-space:nowrap;}
+#card-badge.visible{display:flex;}
+#card-badge .card-clear{color:var(--dim);margin-left:3px;font-size:12px;}
 #chat-input{flex:1;background:rgba(255,255,255,0.05);border:1px solid var(--glass-border);border-radius:4px;padding:6px 10px;color:#fff;font-family:inherit;font-size:12px;outline:none;}
 #chat-input:focus{border-color:var(--green);}
 .img-preview{max-width:180px;border-radius:6px;margin-top:6px;border:1px solid #333;}
@@ -274,11 +282,19 @@ body{background:transparent;color:var(--green);font-family:'Consolas','Courier N
   <div class="tb-sep"></div>
   <span class="tb-label">Model</span>
   <select id="model-select">
-    <optgroup label="── Gemini ──">
-      <option value="gemini-3.1-pro">🔧 Gemini 3.1 Pro</option>
-      <option value="gemini-3.1-flash-lite-preview" selected>🔧 Flash-Lite</option>
-      <option value="gemini-3.1-flash-live">Flash-Live</option>
-      <option value="gemma-4-26b-a4b-it">Gemma 4</option>
+    <optgroup label="── Gemini (thinking ✦) ──">
+      <option value="gemini-3.1-pro-preview">✦ Gemini 3.1 Pro</option>
+      <option value="gemini-3.1-flash-lite-preview" selected>✦ Flash-Lite (fast)</option>
+      <option value="gemini-2.5-pro">✦ Gemini 2.5 Pro</option>
+      <option value="gemini-2.5-flash">✦ Gemini 2.5 Flash</option>
+      <option value="gemini-2.0-flash">🔧 Gemini 2.0 Flash</option>
+      <option value="gemini-2.0-flash-lite">🔧 Gemini 2.0 Flash-Lite</option>
+    </optgroup>
+    <optgroup label="── Gemma (chat only) ──">
+      <option value="gemma-4-31b-it">💬 Gemma 4 31B</option>
+      <option value="gemma-4-26b-a4b-it">💬 Gemma 4 26B</option>
+      <option value="gemma-3-27b-it">💬 Gemma 3 27B</option>
+      <option value="gemma-3-12b-it">💬 Gemma 3 12B</option>
     </optgroup>
     <optgroup label="── Grok (xAI) ──">
       <option value="grok-4.20-multi-agent-0309">🔧 Grok 4.20 Multi-Agent ✦</option>
@@ -396,7 +412,8 @@ body{background:transparent;color:var(--green);font-family:'Consolas','Courier N
   <div class="v-resizer" id="chat-resizer"></div>
 
   <!-- CHAT SIDEBAR -->
-  <div id="chat-panel" class="view-pane">
+  <div id="chat-panel" class="view-pane" style="position:relative;">
+    <div id="card-drop-overlay"><span class="drop-icon">🃏</span><span class="drop-label">Drop Character Card</span></div>
     <div id="chat-header">
       <span id="chat-toggle" onclick="toggleChat()">◀</span>
       <span>⚡ SPARK</span>
@@ -411,8 +428,9 @@ body{background:transparent;color:var(--green);font-family:'Consolas','Courier N
       </div>
       <div id="chat-input-wrap">
         <label for="file-input" id="attach-icon">📎</label>
-        <input type="file" id="file-input" accept="image/*">
-        <input type="text" id="chat-input" placeholder="Talk to Spark..." autocomplete="off">
+        <input type="file" id="file-input" accept="image/*,.json,.png">
+        <div id="card-badge"><span>🃏</span><span id="card-badge-name"></span><span class="card-clear" onclick="clearCardDrop()">✕</span></div>
+        <input type="text" id="chat-input" placeholder="Talk to Spark... or drop a card 🃏" autocomplete="off">
         <button id="stop-btn" onclick="abortGeneration()" title="Stop generation" style="display:none;background:rgba(255,50,50,0.18);border:1px solid rgba(255,60,60,0.45);color:#ff5555;border-radius:3px;padding:2px 9px;font-family:inherit;font-size:11px;cursor:pointer;letter-spacing:1px;transition:0.15s;flex-shrink:0;" onmouseover="this.style.background='rgba(255,50,50,0.35)'" onmouseout="this.style.background='rgba(255,50,50,0.18)'">⊣ STOP</button>
       </div>
     </div>
@@ -1197,7 +1215,86 @@ chatInput.addEventListener('keydown',e=>{
     chatInput.value='';currentImgB64=null;currentImgMime=null;fileInput.value='';attachIcon.classList.remove('has-file');
   }
 });
-fileInput.onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{currentImgB64=ev.target.result.split(',')[1];currentImgMime=f.type;attachIcon.classList.add('has-file');};r.readAsDataURL(f);};
+fileInput.onchange=e=>{
+  const f=e.target.files[0];if(!f)return;
+  // 📎 button: .json only goes to Card Cruncher — images/screenshots always attach normally
+  if(f.name.toLowerCase().endsWith('.json')){_handleCardFile(f);return;}
+  const r=new FileReader();r.onload=ev=>{currentImgB64=ev.target.result.split(',')[1];currentImgMime=f.type;attachIcon.classList.add('has-file');};r.readAsDataURL(f);
+};
+
+/* ====== CARD CRUNCHER DRAG-AND-DROP ====== */
+let _pendingCard=null;
+
+function _isCardFile(f){
+  if(!f)return false;
+  const nm=f.name.toLowerCase();
+  // .json always treated as potential card; .png only if small enough to be a card (< 5MB)
+  if(nm.endsWith('.json'))return true;
+  if(nm.endsWith('.png')&&f.size<5*1024*1024)return true;
+  return false;
+}
+
+function _handleCardFile(f){
+  _pendingCard=f;
+  $('card-badge-name').textContent=f.name;
+  $('card-badge').classList.add('visible');
+  $('chat-input').placeholder='Press Enter to crunch '+f.name+' →';
+  appendChat('<div class="tool">🃏 Card queued: <b>'+f.name+'</b> — press Enter to crunch it into a persona</div>');
+}
+
+function clearCardDrop(){
+  _pendingCard=null;
+  $('card-badge').classList.remove('visible');
+  $('card-badge-name').textContent='';
+  $('chat-input').placeholder='Talk to Spark... or drop a card 🃏';
+}
+
+function _sendCardToEngine(f){
+  const r=new FileReader();
+  r.onload=ev=>{
+    const b64=ev.target.result.split(',')[1];
+    send({type:'card_crunch',filename:f.name,data:b64});
+    appendChat('<div class="tool">🃏 Sending <b>'+f.name+'</b> to Card Cruncher...</div>');
+    _setGenerating(true);
+    clearCardDrop();
+  };
+  r.readAsDataURL(f);
+}
+
+// Override Enter in chat input to fire card crunch if a card is pending
+const _origChatKeydown=chatInput.onkeydown;
+chatInput.addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&_pendingCard&&!chatInput.value.trim()){
+    e.stopImmediatePropagation();
+    _sendCardToEngine(_pendingCard);
+    return;
+  }
+},{capture:true});
+
+// Drag-and-drop on chat panel
+const chatPanel=$('chat-panel'),dropOverlay=$('card-drop-overlay');
+let _dragCounter=0;
+
+chatPanel.addEventListener('dragenter',e=>{
+  e.preventDefault();
+  const items=[...e.dataTransfer.items];
+  const hasCard=items.some(i=>i.kind==='file'&&(i.type==='application/json'||i.type==='image/png'||i.type===''));
+  if(hasCard){_dragCounter++;dropOverlay.classList.add('active');}
+});
+chatPanel.addEventListener('dragover',e=>{e.preventDefault();e.dataTransfer.dropEffect='copy';});
+chatPanel.addEventListener('dragleave',e=>{
+  _dragCounter--;if(_dragCounter<=0){_dragCounter=0;dropOverlay.classList.remove('active');}
+});
+chatPanel.addEventListener('drop',e=>{
+  e.preventDefault();_dragCounter=0;dropOverlay.classList.remove('active');
+  const files=[...e.dataTransfer.files];
+  const card=files.find(f=>_isCardFile(f));
+  if(card){
+    // If user holds Shift — send immediately; otherwise queue with badge
+    if(e.shiftKey){_sendCardToEngine(card);}
+    else{_handleCardFile(card);}
+  }
+});
 
 /* ====== PERSONA ====== */
 function populatePersonas(names){

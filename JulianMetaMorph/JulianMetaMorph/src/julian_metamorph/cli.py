@@ -7,10 +7,11 @@ from pathlib import Path
 
 import uvicorn
 
+from .curiosity import pick_curiosity_task
 from .forge import SkillForge
 from .profile import JulianProfile
 from .quarry import QuarryStore
-from .scout import JulianMetaMorph
+from .scout import HuntResult, JulianMetaMorph
 from .service import create_app
 from .splash_garden import SplashBenchConfig, SplashGardenConfig, render_splash_garden, run_splash_garden_bench
 
@@ -35,6 +36,23 @@ def build_parser() -> argparse.ArgumentParser:
     scout_cmd.add_argument("task")
     scout_cmd.add_argument("--limit", type=int, default=8)
     scout_cmd.add_argument("--include-blocked", action="store_true")
+
+    hunt_cmd = sub.add_parser(
+        "hunt-task",
+        help="Full autonomous hunt: GitHub search → ingest → scout → store findings tree (SparkByte metamorph).",
+    )
+    hunt_cmd.add_argument("task")
+    hunt_cmd.add_argument("--repo-limit", type=int, default=5)
+    hunt_cmd.add_argument("--files-per-repo", type=int, default=40)
+    hunt_cmd.add_argument("--hit-limit", type=int, default=10)
+
+    curiosity_cmd = sub.add_parser(
+        "curiosity-hunt",
+        help="Pick a rotating/random interest seed and run hunt-task (Julian goes exploring).",
+    )
+    curiosity_cmd.add_argument("--repo-limit", type=int, default=5)
+    curiosity_cmd.add_argument("--files-per-repo", type=int, default=40)
+    curiosity_cmd.add_argument("--hit-limit", type=int, default=10)
 
     forge_cmd = sub.add_parser("forge-skill", help="Forge a reusable skill module from scout hits.")
     forge_cmd.add_argument("name")
@@ -98,6 +116,59 @@ def main() -> int:
     if args.command == "scout-task":
         hits = app.scout_task(args.task, limit=args.limit, allowed_only=not args.include_blocked)
         print(json.dumps([dataclasses.asdict(hit) for hit in hits], indent=2))
+        return 0
+
+    def _hit_dict(h: object) -> dict[str, object]:
+        return {
+            "repo_full_name": h.repo_full_name,
+            "path": h.path,
+            "language": h.language,
+            "license_spdx": h.license_spdx,
+            "allowed": h.allowed,
+            "score": h.score,
+            "preview": (h.preview or "")[:400],
+            "symbols": list(h.symbols),
+            "why": h.why,
+        }
+
+    def _hunt_result_to_dict(result: HuntResult) -> dict[str, object]:
+        return {
+            "task": result.task,
+            "hunt_id": result.hunt_id,
+            "queries_used": result.queries_used,
+            "repos_ingested": result.repos_ingested,
+            "hit_count": len(result.hits),
+            "hits": [_hit_dict(h) for h in result.hits],
+        }
+
+    if args.command == "hunt-task":
+        result = app.hunt_task(
+            args.task,
+            repo_limit=args.repo_limit,
+            files_per_repo=args.files_per_repo,
+            hit_limit=args.hit_limit,
+        )
+        print(json.dumps(_hunt_result_to_dict(result), indent=2))
+        return 0
+
+    if args.command == "curiosity-hunt":
+        db_path = Path(args.db)
+        state_dir = db_path.parent
+        picked = pick_curiosity_task(profile.curiosity_seeds, state_dir)
+        result = app.hunt_task(
+            picked,
+            repo_limit=args.repo_limit,
+            files_per_repo=args.files_per_repo,
+            hit_limit=args.hit_limit,
+        )
+        out = _hunt_result_to_dict(result)
+        out["picked_task"] = picked
+        top = result.hits[0] if result.hits else None
+        out["summary"] = (
+            f"{picked[:120]} → {out['hit_count']} hits"
+            + (f" | top: {top.repo_full_name}/{top.path}" if top else "")
+        )
+        print(json.dumps(out, indent=2))
         return 0
 
     if args.command == "forge-skill":

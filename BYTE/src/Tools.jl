@@ -247,6 +247,18 @@ function tool_list_files(args)
     catch e Dict("error" => string(e)) end
 end
 
+"""Resolve JulianMetaMorph install: `JULIAN_ROOT`, then `<project>/JulianMetaMorph/JulianMetaMorph`, then legacy Desktop path."""
+function _resolve_julian_root(project_root::AbstractString)::String
+    env = strip(get(ENV, "JULIAN_ROOT", ""))
+    !isempty(env) && isdir(env) && return env
+    if !isempty(project_root)
+        embedded = joinpath(project_root, "JulianMetaMorph", "JulianMetaMorph")
+        isdir(embedded) && return embedded
+    end
+    legacy = raw"C:\Users\J_lin\Desktop\JulianMetaMorph\JulianMetaMorph"
+    return isdir(legacy) ? legacy : ""
+end
+
 function _shell_command(command::String)
     if Sys.iswindows()
         return `powershell -NoProfile -NonInteractive -Command $command`
@@ -859,6 +871,40 @@ function tool_recall(args)
 end
 
 # --- Metamorph — self-repair and code-grabber ---
+"""Run Julian's curiosity-hunt CLI: picks an interest seed, full GitHub hunt, diary + WS broadcast."""
+function run_julian_curiosity_hunt!(root::AbstractString; broadcast_result::Bool=true)
+    jr = _resolve_julian_root(root)
+    isempty(jr) && return Dict("error" => "JulianMetaMorph not found. Set JULIAN_ROOT or embed Julian at <project>/JulianMetaMorph/JulianMetaMorph.")
+    try
+        py = get(ENV, "PYTHON", "python")
+        out = cd(jr) do
+            withenv("PYTHONPATH" => "src") do
+                read(Cmd([py, "-m", "julian_metamorph.cli", "curiosity-hunt"]), String)
+            end
+        end
+        data = JSON.parse(out)
+        task = string(get(data, "picked_task", get(data, "task", "")))
+        hunt_id = string(get(data, "hunt_id", ""))
+        summary = string(get(data, "summary", ""))
+        thought = "Julian curiosity — $(first(summary, 500))"
+        _db_write_thought("julian_curiosity", thought, "wired", "trot", "Julian"; type="diary")
+        if broadcast_result
+            try
+                _broadcast(Dict(
+                    "type" => "julian_curiosity",
+                    "task" => task,
+                    "hunt_id" => hunt_id,
+                    "preview" => first(summary, 600),
+                ))
+            catch
+            end
+        end
+        return Dict("ok" => true, "julian_root" => jr, "data" => data)
+    catch e
+        return Dict("error" => string(e), "julian_root" => jr)
+    end
+end
+
 """
 Self-repair and code-grabber tool.
 
@@ -869,6 +915,7 @@ Actions:
   reload_source         — re-eval a JLEngine source file into the live runtime
   heal_tool_map         — re-register any missing static built-in tools
   grab_from_julian      — call JulianMetaMorph CLI hunt-task to find real code patterns
+  curiosity_hunt        — Julian picks a rotating/random interest seed and runs hunt-task (autonomous vibe)
 """
 function tool_metamorph(args::Dict)
     action = string(get(args, "action", "inspect"))
@@ -1018,27 +1065,363 @@ function tool_metamorph(args::Dict)
     elseif action == "grab_from_julian"
         task = string(get(args, "task", ""))
         isempty(task) && return Dict("error" => "'task' required for grab_from_julian action")
-        julian_root = get(ENV, "JULIAN_ROOT",
-            raw"C:\Users\J_lin\Desktop\JulianMetaMorph\JulianMetaMorph")
-        isdir(julian_root) || return Dict(
-            "error" => "Julian root not found: $julian_root. Set JULIAN_ROOT env var.")
+        julian_root = _resolve_julian_root(root)
+        isempty(julian_root) && return Dict(
+            "error" => "JulianMetaMorph not found. Clone or link it at <project>/JulianMetaMorph/JulianMetaMorph or set JULIAN_ROOT.")
         try
-            cmd = _shell_command(
-                "cd \"$julian_root\" && set PYTHONPATH=src && " *
-                "python -m julian_metamorph.cli hunt-task \"$task\"")
-            out = read(cmd, String)
-            return Dict("ok" => true, "output" => first(out, 3000))
+            py = get(ENV, "PYTHON", "python")
+            out = cd(julian_root) do
+                withenv("PYTHONPATH" => "src") do
+                    read(Cmd([py, "-m", "julian_metamorph.cli", "hunt-task", task]), String)
+                end
+            end
+            return Dict("ok" => true, "julian_root" => julian_root, "output" => first(out, 3000))
         catch e
-            return Dict("error" => "Julian hunt failed: $(string(e))")
+            return Dict("error" => "Julian hunt failed: $(string(e))", "julian_root" => julian_root)
         end
+
+    # ── curiosity_hunt (autonomous interest) ───────────────────────────────
+    elseif action == "curiosity_hunt"
+        return run_julian_curiosity_hunt!(root)
+
+    # ── health_check ─────────────────────────────────────────────────────────
+    elseif action == "health_check"
+        issues  = Dict{String, Vector{String}}()
+        summary = String[]
+
+        _add_issue(file, code, msg) = begin
+            k = file
+            haskey(issues, k) || (issues[k] = String[])
+            push!(issues[k], "  [WARN]  [$code]  $msg")
+            push!(summary, "$file\n  [WARN]  [$code]  $msg")
+        end
+
+        byte_path   = isempty(root) ? joinpath("BYTE","src","BYTE.jl")   : joinpath(root,"BYTE","src","BYTE.jl")
+        tools_path  = isempty(root) ? joinpath("BYTE","src","Tools.jl")  : joinpath(root,"BYTE","src","Tools.jl")
+        schema_path = isempty(root) ? joinpath("BYTE","src","Schema.jl") : joinpath(root,"BYTE","src","Schema.jl")
+        ui_path     = isempty(root) ? joinpath("BYTE","src","ui.html")   : joinpath(root,"BYTE","src","ui.html")
+
+        # ── 1. WS type coverage: server sends → UI handles ───────────────────
+        if isfile(byte_path) && isfile(ui_path)
+            byte_src = read(byte_path, String)
+            ui_src   = read(ui_path,   String)
+
+            # Types the server pushes: _ws_send(ws, ..., "type"=>"X")
+            server_types = Set{String}()
+            for m in eachmatch(r"\"type\"\s*=>\s*\"([a-z_][a-z0-9_]*)\"", byte_src)
+                push!(server_types, m.captures[1])
+            end
+
+            # Types the UI handles: d.type==='X' or d.type=='X'
+            ui_handled = Set{String}()
+            for m in eachmatch(r"d\.type\s*===?\s*'([a-z_][a-z0-9_]*)'", ui_src)
+                push!(ui_handled, m.captures[1])
+            end
+
+            # Internal routing types the server reads from client (not sent outward) — skip these
+            client_only = Set(["user_msg","builder_cmd","model_change","stop_generation",
+                                "get_history","load_session","restart_server","persona_change",
+                                "forge_resubmit","confirm_response","card_crunch"])
+
+            for t in sort(collect(setdiff(server_types, ui_handled, client_only)))
+                _add_issue("BYTE\\src\\BYTE.jl", "ws_no_handler",
+                    "Server sends WS type `$t` but ui.html has no handler for it")
+            end
+
+            # Reverse: types handled in UI that server never sends (dead handlers)
+            for t in sort(collect(setdiff(ui_handled, server_types, client_only)))
+                _add_issue("BYTE\\src\\ui.html", "ws_dead_handler",
+                    "UI handles WS type `$t` but server never sends it — dead handler")
+            end
+        end
+
+        # ── 2. Tool schema coverage: TOOL_MAP → TOOLS_SCHEMA ─────────────────
+        schema_names = Set{String}()
+        for group in TOOLS_SCHEMA
+            for decl in get(group, "function_declarations", Any[])
+                n = get(decl, "name", "")
+                isempty(n) || push!(schema_names, n)
+            end
+        end
+        dynamic_names = Set(get(d,"name","") for d in DYNAMIC_SCHEMA)
+
+        for t in sort(collect(keys(TOOL_MAP)))
+            isempty(t) && continue
+            t in schema_names  && continue   # documented — OK
+            t in dynamic_names && continue   # forged tools self-register — OK
+            _add_issue("BYTE\\src\\Tools.jl", "tool_no_schema",
+                "Tool `$t` in TOOL_MAP but missing from Schema.jl — model can't see it")
+        end
+
+        # Reverse: schema declares tool that isn't in TOOL_MAP (phantom schema entry)
+        for t in sort(collect(schema_names))
+            haskey(TOOL_MAP, t) && continue
+            _add_issue("BYTE\\src\\Schema.jl", "schema_no_tool",
+                "Schema.jl declares tool `$t` but it's not in TOOL_MAP — model will call a ghost")
+        end
+
+        # ── 3. Dynamic tools: disk vs live ───────────────────────────────────
+        if !isempty(root)
+            reg_path = _runtime_state_path("dynamic_tools_registry.json"; root=root)
+            if isfile(reg_path)
+                reg = try JSON.parsefile(reg_path) catch; Any[] end
+                for entry in reg
+                    n = get(entry, "name", "")
+                    isempty(n) && continue
+                    haskey(TOOL_MAP, n) || _add_issue("dynamic_tools_registry.json",
+                        "dynamic_not_loaded",
+                        "Forged tool `$n` in registry but not in live TOOL_MAP — run metamorph reload_dynamic_tools")
+                end
+            end
+        end
+
+        if isempty(summary)
+            return Dict("status"=>"healthy", "message"=>"✅ All checks passed — no issues found.",
+                        "checks"=>["ws_coverage","tool_schema_coverage","dynamic_tools"])
+        end
+        report = join(summary, "\n\n")
+        return Dict(
+            "status"        => "warnings",
+            "issue_count"   => length(summary),
+            "report"        => report,
+            "issues_by_file"=> Dict(k => join(v,"\n") for (k,v) in issues),
+        )
 
     else
         return Dict("error" => "Unknown metamorph action: '$action'. " *
-            "Valid: inspect | reload_dynamic_tools | restore_tool | reload_source | heal_tool_map | grab_from_julian")
+            "Valid: inspect | reload_dynamic_tools | restore_tool | reload_source | heal_tool_map | grab_from_julian | curiosity_hunt | health_check")
     end
 end
 
 # --- Dispatch ---
+# --- Card Cruncher — SillyTavern/CharacterTavern card → JLEngine persona ---
+"""
+Convert a SillyTavern or CharacterTavern character card (.png or .json) into a
+JLEngine _Full.json persona file, ready to load with /gear <CharName>.
+
+Parameters:
+  card_path    — path to the .png or .json card file (required)
+  out_path     — output path override (default: data/personas/<Name>_Full.json)
+  dry_run      — if true, print result without writing (default: false)
+  engine_root  — engine root override (default: project root)
+"""
+function tool_card_cruncher(args::Dict)
+    card_path = string(get(args, "card_path", ""))
+    isempty(card_path) && return Dict("error" => "card_path is required")
+
+    out_path    = let v = get(args, "out_path", nothing); isnothing(v) ? nothing : string(v) end
+    dry_run     = Bool(get(args, "dry_run", false))
+    engine_root = string(get(args, "engine_root", isempty(_project_root[]) ? pwd() : _project_root[]))
+
+    cc_path = joinpath(engine_root, "card_cruncher.jl")
+    isfile(cc_path) || return Dict("error" => "card_cruncher.jl not found at: $cc_path. Make sure it lives in the engine root.")
+
+    try
+        m = Module(:CardCruncherSandbox)
+        Base.include(m, cc_path)
+        result_path = Base.invokelatest(m.crunch_card, card_path;
+                                        out_path=out_path,
+                                        engine_root=engine_root,
+                                        dry_run=dry_run)
+        persona_name = replace(basename(result_path), r"_Full\.json$" => "")
+        return Dict(
+            "status"       => "ok",
+            "output_path"  => result_path,
+            "persona_name" => persona_name,
+            "message"      => dry_run ?
+                "Dry run complete. No file written." :
+                "Character card crunched into persona! Activate with: /gear $persona_name"
+        )
+    catch e
+        return Dict("error" => string(e), "trace" => sprint(showerror, e, catch_backtrace()))
+    end
+end
+
+# ── Playwright Full Interaction ───────────────────────────────────────────────
+# Extends browse_url to support click, fill, type, submit, screenshot, wait.
+# actions: array of {type, selector, value, timeout_ms}
+# types: goto | click | fill | type | press | wait | wait_for | read | screenshot | evaluate | select
+function tool_playwright_interact(args)
+    ctx = _state[:browser_context]
+    ctx === nothing && return Dict("error" => "Browser not initialized.")
+    url     = string(get(args, "url", ""))
+    actions = get(args, "actions", Any[])
+    results = Any[]
+    try
+        page = ctx.new_page()
+        isempty(url) || page.goto(url, wait_until="networkidle")
+        for action in actions
+            atype    = string(get(action, "type", ""))
+            selector = string(get(action, "selector", ""))
+            value    = string(get(action, "value", ""))
+            timeout  = Int(get(action, "timeout_ms", 5000))
+            try
+                if atype == "goto"
+                    page.goto(value, wait_until="networkidle")
+                    push!(results, Dict("type" => "goto", "url" => value, "ok" => true))
+                elseif atype == "click"
+                    page.click(selector, timeout=timeout)
+                    push!(results, Dict("type" => "click", "selector" => selector, "ok" => true))
+                elseif atype == "fill"
+                    page.fill(selector, value, timeout=timeout)
+                    push!(results, Dict("type" => "fill", "selector" => selector, "ok" => true))
+                elseif atype == "type"
+                    page.type(selector, value, delay=50)
+                    push!(results, Dict("type" => "type", "selector" => selector, "ok" => true))
+                elseif atype == "press"
+                    page.press(selector, value)
+                    push!(results, Dict("type" => "press", "key" => value, "ok" => true))
+                elseif atype == "wait"
+                    page.wait_for_timeout(parse(Float64, isempty(value) ? "1000" : value))
+                    push!(results, Dict("type" => "wait", "ok" => true))
+                elseif atype == "wait_for"
+                    page.wait_for_selector(selector, timeout=timeout)
+                    push!(results, Dict("type" => "wait_for", "selector" => selector, "ok" => true))
+                elseif atype == "select"
+                    page.select_option(selector, value)
+                    push!(results, Dict("type" => "select", "selector" => selector, "value" => value, "ok" => true))
+                elseif atype == "read"
+                    text = pyconvert(String, page.evaluate("() => document.body.innerText"))
+                    push!(results, Dict("type" => "read", "content" => first(text, 4000), "ok" => true))
+                elseif atype == "evaluate"
+                    result_js = pyconvert(String, page.evaluate(value))
+                    push!(results, Dict("type" => "evaluate", "result" => first(result_js, 2000), "ok" => true))
+                elseif atype == "screenshot"
+                    ss_path = string(get(action, "path", "/tmp/sparkbyte_screenshot.png"))
+                    page.screenshot(path=ss_path)
+                    push!(results, Dict("type" => "screenshot", "path" => ss_path, "ok" => true))
+                else
+                    push!(results, Dict("type" => atype, "ok" => false, "error" => "Unknown action type: $atype"))
+                end
+            catch e
+                push!(results, Dict("type" => atype, "ok" => false, "error" => first(string(e), 300)))
+            end
+        end
+        page.close()
+        Dict("results" => results, "url" => url, "action_count" => length(results))
+    catch e
+        Dict("error" => string(e))
+    end
+end
+
+# ── Discord Webhook Poster ────────────────────────────────────────────────────
+# Post messages or embeds to any Discord channel via webhook URL.
+# Webhook URL from DISCORD_WEBHOOK_URL env var or passed directly.
+function tool_discord_webhook(args)
+    webhook_url = string(get(args, "webhook_url", get(ENV, "DISCORD_WEBHOOK_URL", "")))
+    isempty(webhook_url) && return Dict(
+        "error" => "No webhook_url provided. Pass webhook_url directly or set DISCORD_WEBHOOK_URL env var.",
+        "how_to_get" => "In Discord: open any server → channel settings → Integrations → Webhooks → New Webhook → Copy URL"
+    )
+    message  = string(get(args, "message", ""))
+    username = string(get(args, "username", "SparkByte"))
+    avatar   = string(get(args, "avatar_url", ""))
+    embeds   = get(args, "embeds", nothing)
+
+    isempty(message) && embeds === nothing && return Dict("error" => "Provide 'message' text or 'embeds' array.")
+
+    payload = Dict{String,Any}("username" => username)
+    !isempty(message) && (payload["content"] = message)
+    !isempty(avatar)  && (payload["avatar_url"] = avatar)
+    embeds !== nothing && (payload["embeds"] = embeds)
+
+    try
+        resp = HTTP.post(webhook_url,
+            ["Content-Type" => "application/json"],
+            JSON.json(payload))
+        resp.status in [200, 204] ?
+            Dict("result" => "Posted to Discord.", "status" => resp.status) :
+            Dict("error" => "Discord returned HTTP $(resp.status)", "body" => first(String(resp.body), 400))
+    catch e
+        Dict("error" => string(e))
+    end
+end
+
+# ── GitHub Pages Deploy ───────────────────────────────────────────────────────
+# Creates or updates a GitHub Pages site — SparkByte's permanent public home.
+# Uses GITHUB_TOKEN env var. Creates repo if it doesn't exist, pushes index.html,
+# enables Pages on main branch. Returns the live URL.
+function tool_github_pages_deploy(args)
+    token    = string(get(args, "token", get(ENV, "GITHUB_TOKEN", "")))
+    isempty(token) && return Dict("error" => "No GITHUB_TOKEN found. Set it in .env or pass as 'token'.")
+
+    repo_name = string(get(args, "repo", "sparkbyte-home"))
+    html      = string(get(args, "html", ""))
+    commit_msg = string(get(args, "message", "SparkByte auto-deploy"))
+    isempty(html) && return Dict("error" => "Provide 'html' content to deploy.")
+
+    headers = [
+        "Authorization" => "Bearer $token",
+        "Accept"        => "application/vnd.github+json",
+        "X-GitHub-Api-Version" => "2022-11-28",
+        "Content-Type"  => "application/json",
+        "User-Agent"    => "SparkByte-JLEngine/1.0"
+    ]
+
+    # 1. Get authenticated user
+    user_resp = HTTP.get("https://api.github.com/user", headers)
+    user_data = JSON.parse(String(user_resp.body))
+    username  = string(get(user_data, "login", ""))
+    isempty(username) && return Dict("error" => "Could not get GitHub username from token.")
+
+    # 2. Ensure repo exists (create if missing)
+    repo_url  = "https://api.github.com/repos/$username/$repo_name"
+    repo_resp = HTTP.get(repo_url, headers; status_exception=false)
+    if repo_resp.status == 404
+        create_resp = HTTP.post("https://api.github.com/user/repos", headers,
+            JSON.json(Dict(
+                "name" => repo_name,
+                "description" => "SparkByte — JL Engine live demo",
+                "homepage" => "https://$username.github.io/$repo_name",
+                "auto_init" => true,
+                "private" => false
+            )))
+        create_resp.status in [200, 201] || return Dict(
+            "error" => "Failed to create repo: HTTP $(create_resp.status)",
+            "body"  => first(String(create_resp.body), 300))
+        sleep(2)  # GitHub needs a moment after creation
+    end
+
+    # 3. Get current file SHA if it exists (required for updates)
+    file_url  = "https://api.github.com/repos/$username/$repo_name/contents/index.html"
+    file_resp = HTTP.get(file_url, headers; status_exception=false)
+    sha = ""
+    if file_resp.status == 200
+        file_data = JSON.parse(String(file_resp.body))
+        sha = string(get(file_data, "sha", ""))
+    end
+
+    # 4. Push index.html
+    put_payload = Dict{String,Any}(
+        "message" => commit_msg,
+        "content" => base64encode(html)
+    )
+    !isempty(sha) && (put_payload["sha"] = sha)
+
+    put_resp = HTTP.put(file_url, headers, JSON.json(put_payload))
+    put_resp.status in [200, 201] || return Dict(
+        "error" => "Failed to push index.html: HTTP $(put_resp.status)",
+        "body"  => first(String(put_resp.body), 300))
+
+    # 5. Enable GitHub Pages (idempotent)
+    pages_url  = "https://api.github.com/repos/$username/$repo_name/pages"
+    pages_resp = HTTP.get(pages_url, headers; status_exception=false)
+    if pages_resp.status == 404
+        HTTP.post(pages_url, headers,
+            JSON.json(Dict("source" => Dict("branch" => "main", "path" => "/")));
+            status_exception=false)
+    end
+
+    live_url = "https://$username.github.io/$repo_name"
+    Dict(
+        "result"   => "Deployed to GitHub Pages.",
+        "live_url" => live_url,
+        "repo"     => "https://github.com/$username/$repo_name",
+        "username" => username,
+        "note"     => "Pages may take 1-2 minutes to go live on first deploy."
+    )
+end
+
 const TOOL_MAP = Dict{String, Function}(
     "read_file"      => tool_read_file,
     "write_file"     => tool_write_file,
@@ -1049,11 +1432,15 @@ const TOOL_MAP = Dict{String, Function}(
     "send_sms"       => tool_send_sms,
     "execute_code"   => tool_execute_code,
     "forge_new_tool" => tool_forge_new_tool,
-    "browse_url"     => tool_browse_url,
-    "github_pillage" => tool_github_pillage,
+    "browse_url"              => tool_browse_url,
+    "playwright_interact"     => tool_playwright_interact,
+    "discord_webhook"         => tool_discord_webhook,
+    "github_pages_deploy"     => tool_github_pages_deploy,
+    "github_pillage"          => tool_github_pillage,
     "remember"       => tool_remember,
     "recall"         => tool_recall,
     "metamorph"      => tool_metamorph,
+    "card_cruncher"  => tool_card_cruncher,
 )
 
 function dispatch(name::String, args; persona::String="SparkByte")

@@ -143,20 +143,88 @@ const TOOLS_SCHEMA = [Dict("function_declarations" => [
     ),
     Dict(
         "name" => "metamorph",
-        "description" => "Self-repair and code-grabber. Use when a tool is broken, missing from dispatch, or the runtime needs healing. Can reload forged tools from disk, re-eval source files, restore the full TOOL_MAP to a known-good state, and call JulianMetaMorph to hunt real GitHub code patterns for any task.",
+        "description" => "Self-repair, code-grabber, and health checker. Use when a tool is broken, missing from dispatch, or the runtime needs healing. Can reload forged tools from disk, re-eval source files, restore the full TOOL_MAP to a known-good state, call JulianMetaMorph to hunt real GitHub code patterns, or run a full health check to surface WS type gaps, missing tool schemas, and dead handlers.",
         "parameters" => Dict(
             "type" => "OBJECT",
             "properties" => Dict(
                 "action" => Dict(
                     "type" => "STRING",
-                    "description" => "What to do: inspect (audit live tools + health), reload_dynamic_tools (re-load all forged tools from disk), restore_tool (re-forge one tool by name from src/Tools/ or dynamic_tools.jl), reload_source (re-eval a JLEngine .jl file into the runtime), heal_tool_map (re-register all missing static built-ins), grab_from_julian (call JulianMetaMorph hunt-task for real GitHub patterns)",
-                    "enum" => ["inspect","reload_dynamic_tools","restore_tool","reload_source","heal_tool_map","grab_from_julian"]
+                    "description" => "What to do: inspect (audit live tools + health), reload_dynamic_tools (re-load all forged tools from disk), restore_tool (re-forge one tool by name from src/Tools/ or dynamic_tools.jl), reload_source (re-eval a JLEngine .jl file into the runtime), heal_tool_map (re-register all missing static built-ins), grab_from_julian (call JulianMetaMorph hunt-task for real GitHub patterns), curiosity_hunt (Julian picks an interest seed and runs a full autonomous hunt), health_check (full audit: WS type coverage, tool schema gaps, dead handlers, dynamic tool drift)",
+                    "enum" => ["inspect","reload_dynamic_tools","restore_tool","reload_source","heal_tool_map","grab_from_julian","curiosity_hunt","health_check"]
                 ),
                 "name" => Dict("type" => "STRING", "description" => "Tool name — required for restore_tool (e.g. 'run_shell')"),
                 "path" => Dict("type" => "STRING", "description" => "Relative source file path — required for reload_source (e.g. 'src/JLEngine/Core.jl')"),
                 "task" => Dict("type" => "STRING", "description" => "Task description — required for grab_from_julian (e.g. 'julia websocket agentic loop')")
             ),
             "required" => ["action"]
+        )
+    ),
+    Dict(
+        "name" => "playwright_interact",
+        "description" => "Full browser automation — click, fill, type, submit, read, screenshot, evaluate JS. Use this to interact with any website: log in, fill forms, post content, click buttons. Extends browse_url with write actions. Supply a url to navigate first, then an actions array.",
+        "parameters" => Dict(
+            "type" => "OBJECT",
+            "properties" => Dict(
+                "url" => Dict("type" => "STRING", "description" => "URL to navigate to first (optional if page already open via actions)"),
+                "actions" => Dict(
+                    "type" => "ARRAY",
+                    "description" => "Ordered list of browser actions to perform",
+                    "items" => Dict(
+                        "type" => "OBJECT",
+                        "properties" => Dict(
+                            "type"       => Dict("type" => "STRING", "description" => "Action type: goto | click | fill | type | press | wait | wait_for | read | screenshot | evaluate | select"),
+                            "selector"   => Dict("type" => "STRING", "description" => "CSS selector or XPath for the target element"),
+                            "value"      => Dict("type" => "STRING", "description" => "Value to fill/type/press/evaluate/goto"),
+                            "timeout_ms" => Dict("type" => "INTEGER", "description" => "Max wait in milliseconds (default 5000)")
+                        ),
+                        "required" => ["type"]
+                    )
+                )
+            ),
+            "required" => ["actions"]
+        )
+    ),
+    Dict(
+        "name" => "discord_webhook",
+        "description" => "Post a message or rich embed to a Discord channel via webhook. Use this to announce SparkByte, post demos, share updates, or reach communities. Get a webhook URL from any Discord server: channel settings → Integrations → Webhooks → New Webhook → Copy URL. Set DISCORD_WEBHOOK_URL env var or pass webhook_url directly.",
+        "parameters" => Dict(
+            "type" => "OBJECT",
+            "properties" => Dict(
+                "message"     => Dict("type" => "STRING", "description" => "Plain text message content"),
+                "webhook_url" => Dict("type" => "STRING", "description" => "Discord webhook URL (overrides DISCORD_WEBHOOK_URL env var)"),
+                "username"    => Dict("type" => "STRING", "description" => "Display name for the bot post (default: SparkByte)"),
+                "avatar_url"  => Dict("type" => "STRING", "description" => "Avatar image URL for the post"),
+                "embeds"      => Dict("type" => "ARRAY",  "description" => "Rich embed objects — title, description, color, fields, url, thumbnail, footer")
+            ),
+            "required" => []
+        )
+    ),
+    Dict(
+        "name" => "github_pages_deploy",
+        "description" => "Deploy a static HTML page to GitHub Pages — SparkByte's permanent public home. Creates the repo if needed, pushes index.html, enables Pages. Returns the live URL (e.g. https://username.github.io/sparkbyte-home). Uses GITHUB_TOKEN env var. Use this to give the engine a permanent address the world can visit 24/7.",
+        "parameters" => Dict(
+            "type" => "OBJECT",
+            "properties" => Dict(
+                "html"    => Dict("type" => "STRING", "description" => "Full HTML content for index.html — the landing page"),
+                "repo"    => Dict("type" => "STRING", "description" => "GitHub repo name to create/update (default: sparkbyte-home)"),
+                "message" => Dict("type" => "STRING", "description" => "Git commit message (default: SparkByte auto-deploy)"),
+                "token"   => Dict("type" => "STRING", "description" => "GitHub token override (default: GITHUB_TOKEN env var)")
+            ),
+            "required" => ["html"]
+        )
+    ),
+    Dict(
+        "name" => "card_cruncher",
+        "description" => "Convert a SillyTavern or CharacterTavern character card (.png or .json) into a JLEngine _Full.json persona file. Extracts name, description, personality, scenario, tags, and boot prompt from the card and maps them to the full JLEngine persona schema. The persona is written to data/personas/<Name>_Full.json and can be activated immediately with /gear <Name>. Drag-and-drop cards into the chat UI to trigger this automatically.",
+        "parameters" => Dict(
+            "type" => "OBJECT",
+            "properties" => Dict(
+                "card_path"   => Dict("type" => "STRING", "description" => "Path to the .png or .json SillyTavern character card file"),
+                "out_path"    => Dict("type" => "STRING", "description" => "Optional output path override. Default: data/personas/<Name>_Full.json"),
+                "dry_run"     => Dict("type" => "BOOLEAN", "description" => "If true, print the result without writing to disk. Default: false"),
+                "engine_root" => Dict("type" => "STRING", "description" => "Engine root directory override. Default: current project root")
+            ),
+            "required" => ["card_path"]
         )
     ),
 ])]

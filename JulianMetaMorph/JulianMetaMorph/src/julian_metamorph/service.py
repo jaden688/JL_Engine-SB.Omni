@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from .curiosity import pick_curiosity_task
 from .forge import SkillForge
 from .profile import JulianProfile
 from .quarry import QuarryStore
@@ -34,6 +35,12 @@ class ScoutTaskRequest(BaseModel):
 
 class HuntRequest(BaseModel):
     task: str
+    repo_limit: int = 5
+    files_per_repo: int = 40
+    hit_limit: int = 10
+
+
+class CuriosityHuntRequest(BaseModel):
     repo_limit: int = 5
     files_per_repo: int = 40
     hit_limit: int = 10
@@ -126,6 +133,32 @@ def create_app(
             "queries_used": result.queries_used,
             "repos_ingested": result.repos_ingested,
             "hits": [asdict(h) for h in result.hits],
+        }
+
+    @app.post("/hunt/curiosity")
+    def hunt_curiosity(request: CuriosityHuntRequest) -> dict[str, object]:
+        """Julian picks an interest seed and runs a full hunt without a user-supplied task string."""
+        state_dir = Path(db_path).parent
+        picked = pick_curiosity_task(profile.curiosity_seeds, state_dir)
+        result = morph.hunt_task(
+            picked,
+            repo_limit=request.repo_limit,
+            files_per_repo=request.files_per_repo,
+            hit_limit=request.hit_limit,
+        )
+        top = result.hits[0] if result.hits else None
+        summary = (
+            f"{picked[:120]} → {len(result.hits)} hits"
+            + (f" | top: {top.repo_full_name}/{top.path}" if top else "")
+        )
+        return {
+            "picked_task": picked,
+            "task": result.task,
+            "hunt_id": result.hunt_id,
+            "queries_used": result.queries_used,
+            "repos_ingested": result.repos_ingested,
+            "hits": [asdict(h) for h in result.hits],
+            "summary": summary,
         }
 
     @app.get("/findings/tree")

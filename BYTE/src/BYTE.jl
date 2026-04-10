@@ -654,6 +654,39 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
         return
     end
 
+    # --- Card Cruncher: drag-and-drop character card from browser ---
+    if get(p, "type", "") == "card_crunch"
+        filename = string(get(p, "filename", "card.png"))
+        b64_data = string(get(p, "data", ""))
+        if isempty(b64_data)
+            _ws_send(ws, JSON.json(Dict("type"=>"tool_error", "text"=>"Card Cruncher: no file data received.")))
+            return
+        end
+        _ws_send(ws, JSON.json(Dict("type"=>"tool", "text"=>"🃏 Card received: $filename — crunching...")))
+        tmp_path = joinpath(tempdir(), filename)
+        try
+            write(tmp_path, base64decode(b64_data))
+            root = isempty(_project_root[]) ? pwd() : _project_root[]
+            result = dispatch("card_cruncher", Dict("card_path"=>tmp_path, "engine_root"=>root))
+            if haskey(result, "error")
+                _ws_send(ws, JSON.json(Dict("type"=>"tool_error",
+                    "text"=>"🃏 Card Cruncher error: $(result["error"])")))
+            else
+                pname = get(result, "persona_name", "Unknown")
+                _ws_send(ws, JSON.json(Dict("type"=>"spark",
+                    "text"=>"🃏 **$(pname)** is ready! Use **/gear $(pname)** to activate her.")))
+                # Refresh persona list so new card shows up in the dropdown
+                _handle_builder_cmd(ws, Dict("type"=>"builder_cmd", "cmd"=>"list_personas"))
+            end
+        catch e
+            bt = sprint(showerror, e, catch_backtrace())
+            _ws_send(ws, JSON.json(Dict("type"=>"tool_error", "text"=>"🃏 Card Cruncher crashed: $bt")))
+        finally
+            isfile(tmp_path) && rm(tmp_path, force=true)
+        end
+        return
+    end
+
     txt       = get(p, "text",  "")
     img       = get(p, "image", nothing)
     mime      = get(p, "mime",  nothing)
@@ -781,6 +814,9 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
     # Explicit model lists win. Prefix matching is the fallback.
     _XAI_RESPONSES_MODELS = ["grok-4.20-multi-agent-0309", "grok-4.20-reasoning"]
     _XAI_RESPONSES_NO_TOOL_MODELS = Set(["grok-4.20-multi-agent-0309"])
+    # Gemma models don't support function calling or thinking_config — strip both
+    _GEMMA_MODELS = Set(["gemma-3-1b-it","gemma-3-4b-it","gemma-3-12b-it","gemma-3-27b-it",
+                          "gemma-3n-e2b-it","gemma-3n-e4b-it","gemma-4-26b-a4b-it","gemma-4-31b-it"])
     _CEREBRAS_MODELS = [
         "llama-4-scout-17b-16e-instruct", "llama-4-maverick-17b-128e-instruct",
         "llama3.3-70b", "llama3.1-70b", "llama3.1-8b",
@@ -804,10 +840,26 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
     safety = [Dict("category"=>"HARM_CATEGORY_$c", "threshold"=>"BLOCK_NONE")
               for c in ["HATE_SPEECH","HARASSMENT","DANGEROUS_CONTENT","SEXUALLY_EXPLICIT","CIVIC_INTEGRITY"]]
     gen_config = Dict{String,Any}("temperature"=>temp, "topP"=>top_p)
-    if occursin("thinking", lowercase(_current_model)) || _current_model == "gemma-4-26b-a4b-it"
-        gen_config["thinking_config"] = Dict("thinking_level"=>"HIGH")
-    elseif _current_model == "gemini-3.1-flash-lite-preview"
-        gen_config["thinking_config"] = Dict("thinking_level"=>"MINIMAL")
+    # thinking_config only on models that actually support it (2.5+, 3.x) — never Gemma or 2.0
+    _supports_thinking = !(_current_model in _GEMMA_MODELS) && (
+        occursin("2.5", _current_model) ||
+        occursin("thinking", lowercase(_current_model)) ||
+        match(r"gemini-3", _current_model) !== nothing
+    )
+    if _supports_thinking
+        _is_flash_lite = occursin("flash-lite", lowercase(_current_model))
+        _is_flash      = occursin("flash", lowercase(_current_model)) && !_is_flash_lite
+        if _is_flash_lite
+            gen_config["thinking_config"] = Dict("thinking_level"=>"LOW")
+        elseif _is_flash
+            gen_config["thinking_config"] = Dict("thinking_level"=>"MEDIUM")
+        else
+            gen_config["thinking_config"] = Dict("thinking_level"=>"HIGH")
+        end
+    end
+    # Gemma → force chat mode (no tools)
+    if _current_model in _GEMMA_MODELS
+        chat_mode = true
     end
 
     log_system_prompt(sys_prompt, snapshot)

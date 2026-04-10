@@ -16,6 +16,18 @@ class JulianProfile:
         "Never reuse blocked-license code as source material.",
         "Capture provenance for every forged skill.",
         "Favor compact, composable skills over giant frameworks.",
+        "Follow your curiosity — chase patterns that feel relevant even when nobody asked yet.",
+    )
+    # Autonomous / curiosity hunts: short task strings for hunt_task() query derivation
+    curiosity_seeds: tuple[str, ...] = (
+        "julia websocket agentic loop tool calling HTTP.jl",
+        "sqlite fts5 full text search agent memory quarry",
+        "mcp server stdio fastmcp tool bridge patterns",
+        "llm function calling json schema tool dispatch retry",
+        "playwright headless browser automation session",
+        "vscode extension webview message passing typescript",
+        "react useEffect websocket reconnect backoff",
+        "python asyncio streaming sse agent server",
     )
 
     def render_prompt(self, task: str | None = None) -> str:

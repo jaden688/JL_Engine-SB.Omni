@@ -19,8 +19,12 @@ tmp_exec_*.jl
 full_telemetry.jsonl
 telemetry_logs/
 *.jsonl
+*.log
 thought_log.txt
 telemetry_test.txt
+
+# Claude Code local config / memory
+.claude/
 
 # Dynamic tool registry (runtime-generated)
 dynamic_tools_registry.json
@@ -29,6 +33,8 @@ dynamic_tools.jl
 # Inspection / scratch dirs
 _mcp_inspect/
 mcp.zip
+a2a-inspector/
+a2a-tck/
 
 # Python
 __pycache__/

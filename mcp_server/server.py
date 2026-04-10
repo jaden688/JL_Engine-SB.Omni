@@ -12,9 +12,11 @@ from mcp.server.fastmcp import FastMCP
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 ROOT = Path(__file__).parent.parent
-SB_DB   = ROOT / "sparkbyte_memory.db"
-JUL_DB  = Path(os.environ.get("JULIAN_DB", r"C:\Users\J_lin\Desktop\JulianMetaMorph\JulianMetaMorph\data\quarry.db"))
-SKILL_MD = Path(os.environ.get("JULIAN_SKILL", r"C:\Users\J_lin\.claude\skills\julian\SKILL.md"))
+SB_DB = ROOT / "sparkbyte_memory.db"
+# Same monorepo layout as SparkByte: Julian quarry lives next to engine unless overridden.
+_EMBEDDED_QUARRY = ROOT / "JulianMetaMorph" / "JulianMetaMorph" / "data" / "quarry.db"
+JUL_DB = Path(os.environ.get("JULIAN_DB", str(_EMBEDDED_QUARRY)))
+SKILL_MD = Path(os.environ.get("JULIAN_SKILL", str(Path.home() / ".claude" / "skills" / "julian" / "SKILL.md")))
 
 mcp = FastMCP("sparkbyte")
 
@@ -48,15 +50,14 @@ def skill_context() -> str:
     if SKILL_MD.exists():
         return SKILL_MD.read_text(encoding="utf-8")
     # fallback: inline summary
-    return """
+    return f"""
 # SparkByte / JLEngine
 Julia-native AI agent engine with behavioral control layer (gait/rhythm/aperture/drift).
-Root: C:\\Users\\J_lin\\Desktop\\JL_Engine (3)\\jl-vs\\vscode-main\\copilot-separate-leopard
+Root: {ROOT}
 Entry: julia sparkbyte.jl | UI: http://127.0.0.1:8081
 
-# JulianMetaMorph
-GitHub intelligence engine — hunts repos, forges Python skill modules.
-Root: C:\\Users\\J_lin\\Desktop\\JulianMetaMorph\\JulianMetaMorph
+# JulianMetaMorph (joined in monorepo)
+GitHub intelligence — quarry: {JULIAN_DB}
 Entry: python -m julian_metamorph.cli | UI: http://127.0.0.1:8765
 """.strip()
 

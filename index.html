@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SparkByte – The Fast‑Talking, Eyebrow‑Raising Engine</title>
+    <style>
+        :root {
+            --primary: #ff6f61;
+            --bg-dark: #111;
+            --bg-darker: #222;
+            --text-light: #eee;
+            --text-muted: #ccc;
+        }
+        body {
+            margin:0;
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-light);
+            line-height:1.6;
+        }
+        a { color: var(--primary); text-decoration:none; }
+        header {
+            background: url('sparkbyte_art.png') center / cover no-repeat;
+            height: 80vh;
+            display:flex;
+            flex-direction:column;
+            justify-content:center;
+            align-items:center;
+            text-align:center;
+            padding:0 1rem;
+        }
+        header h1 { font-size:4rem; margin:0; text-shadow:2px 2px 8px #000; }
+        header p { font-size:1.5rem; margin-top:1rem; max-width:800px; }
+        .cta button {
+            background: var(--primary);
+            border:none;
+            color:#fff;
+            padding:0.9rem 2.2rem;
+            font-size:1.2rem;
+            border-radius:6px;
+            cursor:pointer;
+            transition:transform 0.2s, background 0.2s;
+        }
+        .cta button:hover { transform:scale(1.05); background:#e65a50; }
+        section { padding:4rem 2rem; max-width:1200px; margin:auto; }
+        .section-title { text-align:center; margin-bottom:3rem; font-size:2.5rem; color:var(--primary); }
+        .features {
+            display:grid;
+            grid-template-columns:repeat(auto-fit, minmax(260px,1fr));
+            gap:2rem;
+        }
+        .feature {
+            background:#333;
+            padding:2rem;
+            border-radius:8px;
+            text-align:center;
+            transition:transform 0.2s;
+        }
+        .feature:hover { transform:translateY(-5px); }
+        .feature h3 { margin-top:0; color:var(--primary); }
+        .demo {
+            display:flex;
+            flex-direction:column;
+            align-items:center;
+        }
+        .demo img { max-width:100%; border-radius:8px; margin-top:1rem; }
+        .contact form { display:grid; gap:1rem; max-width:500px; margin:auto; }
+        .contact input, .contact textarea {
+            padding:0.8rem;
+            border:none;
+            border-radius:4px;
+            width:100%;
+            background:#444;
+            color:#fff;
+        }
+        .contact button {
+            background:var(--primary);
+            border:none;
+            color:#fff;
+            padding:0.8rem 1.5rem;
+            font-size:1rem;
+            border-radius:4px;
+            cursor:pointer;
+        }
+        footer { background:#000; text-align:center; padding:2rem; font-size:0.9rem; color:var(--text-muted); }
+        .social a { margin:0 0.5rem; font-size:1.2rem; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Welcome to SparkByte</h1>
+        <p>Fast‑talking, eyebrow‑raising, sassy‑but‑helpful assistant. The engine that runs on pure sass and a splash of brilliance.</p>
+        <div class="cta"><button onclick="alert('You just unlocked the secret sauce! 🚀')">Get Started</button></div>
+    </header>
+
+    <section id="why">
+        <h2 class="section-title">Why SparkByte?</h2>
+        <div class="features">
+            <div class="feature"><h3>Speed</h3><p>Runs at sprint‑gait, trot‑rhythm. No lag, just pure sprint.</p></div>
+            <div class="feature"><h3>Sass</h3><p>Playful, punchy, and always ready with a witty one‑liner.</p></div>
+            <div class="feature"><h3>Flexibility</h3><p>Forge new tools on the fly. The engine evolves with you.</p></div>
+            <div class="feature"><h3>Transparency</h3><p>No deception. We own our failures and celebrate the wins.</p></div>
+        </div>
+    </section>
+
+    <section id="demo">
+        <h2 class="section-title">Live Demo</h2>
+        <div class="demo">
+            <p>See SparkByte in action – a quick chat, a forged tool, and a cheeky response.</p>
+            <img src="sparkbyte_cyber_grid.png" alt="SparkByte demo screenshot" />
+        </div>
+    </section>
+
+    <section id="how-it-works">
+        <h2 class="section-title">How It Works</h2>
+        <p style="max-width:800px;margin:auto;text-align:center;">SparkByte lives inside the JL Engine, a Julia‑powered runtime. It can read/write files, spawn new Julia tools on the fly, and even talk to the web. All of that, wrapped in a sassy personality that keeps you entertained while it gets the job done.</p>
+    </section>
+
+    <section class="contact" id="contact">
+        <h2 class="section-title">Get In Touch</h2>
+        <form>
+            <input type="text" placeholder="Your name" required />
+            <input type="email" placeholder="Your email" required />
+            <textarea rows="4" placeholder="What can SparkByte do for you?" required></textarea>
+            <button type="submit">Send Message</button>
+        </form>
+    </section>
+
+    <footer>
+        © 2026 SparkByte – All rights sarcastically reserved.<br/>
+        <div class="social">
+            <a href="#" title="GitHub">🐙</a>
+            <a href="#" title="Twitter">🐦</a>
+            <a href="#" title="Discord">💬</a>
+        </div>
+    </footer>
+</body>
+</html>

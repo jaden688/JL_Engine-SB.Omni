@@ -4,6 +4,7 @@ using PythonCall
 using SQLite
 
 include(joinpath(@__DIR__, "..", "BYTE", "src", "BYTE.jl"))
+include(joinpath(@__DIR__, "..", "a2a_server.jl"))
 
 const DEFAULT_HOST = "127.0.0.1"
 const DEFAULT_PORT = 8081
@@ -304,17 +305,61 @@ function _env_port()
     return something(tryparse(Int, raw), DEFAULT_PORT)
 end
 
+"""
+    _sync_julian_env!(root)
+
+Join SparkByte with JulianMetaMorph in the same repo: set `JULIAN_ROOT` and `JULIAN_DB`
+when unset so `metamorph grab_from_julian` and MCP `search_julian_quarry` hit the same quarry.
+Override anytime with env vars.
+"""
+function _sync_julian_env!(root::String)
+    embedded = joinpath(root, "JulianMetaMorph", "JulianMetaMorph")
+    if isempty(strip(get(ENV, "JULIAN_ROOT", ""))) && isdir(embedded)
+        ENV["JULIAN_ROOT"] = embedded
+    end
+    jr = strip(get(ENV, "JULIAN_ROOT", ""))
+    if !isempty(jr) && isempty(strip(get(ENV, "JULIAN_DB", "")))
+        db = joinpath(jr, "data", "quarry.db")
+        isfile(db) && (ENV["JULIAN_DB"] = db)
+    end
+    return
+end
+
+"""Background loop: Julian runs `curiosity-hunt` on an interval. Set `JULIAN_AUTONOMOUS_SECONDS` (e.g. 3600). 0 = off."""
+function _start_julian_autonomous_loop!(root::String)
+    raw = strip(get(ENV, "JULIAN_AUTONOMOUS_SECONDS", "0"))
+    sec = tryparse(Int, raw)
+    if sec === nothing || sec <= 0
+        return
+    end
+    @info "Julian autonomous curiosity" interval_seconds=sec
+    @async begin
+        while true
+            try
+                sleep(sec)
+                r = BYTE.run_julian_curiosity_hunt!(root; broadcast_result=true)
+                get(r, "ok", false) || @warn "Julian autonomous hunt did not complete" result=r
+            catch e
+                @warn "Julian autonomous loop error" exception=(e, catch_backtrace())
+            end
+        end
+    end
+    return
+end
+
 function app_main(; host::String=get(ENV, "SPARKBYTE_HOST", DEFAULT_HOST),
                     port::Int=_env_port(),
                     launch_browser::Bool=_looks_true(get(ENV, "SPARKBYTE_LAUNCH_BROWSER", "1")),
                     root::String=runtime_root())
     _load_env!(root)
+    _sync_julian_env!(root)
 
     db = _open_memory_db(root)
     browser_stack = _start_browser_context()
     BYTE.init(db, browser_stack.browser_context, root)
     _seed_self_context!(db, root)
     engine = _build_engine(root)
+    _start_julian_autonomous_loop!(root)
 
     atexit() do
         try
@@ -339,6 +384,11 @@ function app_main(; host::String=get(ENV, "SPARKBYTE_HOST", DEFAULT_HOST),
     end
 
     println("⚡ SPARKBYTE LATTICE BOOTING...")
+
+    # Boot A2A server alongside SparkByte
+    engine_ref = Ref(engine)
+    start_a2a_server(db; engine_ref=engine_ref)
+
     if launch_browser
         @async try
             sleep(2)
