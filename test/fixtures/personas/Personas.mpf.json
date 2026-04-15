@@ -2,7 +2,7 @@
   "SparkByte": {
     "persona_file": "SparkByte_Full.json",
     "default_memory_mode": "HYBRID",
-    "default_backend_id": "ollama-local",
+    "default_backend_id": "google-gemini",
     "drive_type": "spur",
     "tags": ["quirky", "creative"]
   },

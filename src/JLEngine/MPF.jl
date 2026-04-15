@@ -19,23 +19,146 @@ function load_mpf_registry(registry_path::AbstractString)
     return profiles
 end
 
-load_persona_file(path::AbstractString) = load_json_safely(path)
+function load_persona_file(path::AbstractString)
+    data = load_json_safely(path)
+    isempty(data) && return data
+
+    # If persona has an active_loadout, resolve modular profiles
+    loadout_id = get(data, "active_loadout", nothing)
+    loadout_id isa AbstractString && !isempty(loadout_id) || return data
+
+    # Find the modular_fat_agent_pack directory relative to the persona file
+    persona_dir = dirname(path)
+    pack_dir = joinpath(dirname(persona_dir), "modular_fat_agent_pack")
+    !isdir(pack_dir) && return data
+
+    # Load the loadout definition
+    loadout_path = joinpath(pack_dir, "loadouts", "$(loadout_id).json")
+    loadout = load_json_safely(loadout_path)
+    isempty(loadout) && return data
+
+    # Resolve each profile from the loadout
+    resolved = Dict{String, Any}()
+    profile_map = Dict(
+        "tone_profile"     => "tone",
+        "gate_profile"     => "gates",
+        "tool_profile"     => "tools",
+        "state_profile"    => "state",
+        "behavior_profile" => "behavior",
+        "task_profile"     => "tasks",
+    )
+    for (loadout_key, profile_subdir) in profile_map
+        profile_name = get(loadout, loadout_key, nothing)
+        profile_name isa AbstractString || continue
+        profile_path = joinpath(pack_dir, "profiles", profile_subdir, "$(profile_name).json")
+        profile_data = load_json_safely(profile_path)
+        !isempty(profile_data) && (resolved[profile_subdir] = profile_data)
+    end
+
+    # Load any helpers referenced
+    helpers_dir = joinpath(pack_dir, "helpers")
+    if isdir(helpers_dir)
+        helpers = Dict{String, Any}()
+        for f in readdir(helpers_dir)
+            endswith(f, ".json") || continue
+            h = load_json_safely(joinpath(helpers_dir, f))
+            hid = get(h, "helper_id", replace(f, ".json" => ""))
+            helpers[String(hid)] = h
+        end
+        !isempty(helpers) && (resolved["helpers"] = helpers)
+    end
+
+    # Merge into persona data
+    data["loadout"] = loadout
+    data["loadout_id"] = loadout_id
+    data["resolved_profiles"] = resolved
+
+    # Flatten key profile values into top-level for engine consumption
+    tone = get(resolved, "tone", Dict{String,Any}())
+    data["tone_config"] = tone
+
+    state = get(resolved, "state", Dict{String,Any}())
+    data["state_config"] = state
+
+    behavior = get(resolved, "behavior", Dict{String,Any}())
+    data["behavior_config"] = behavior
+
+    tools = get(resolved, "tools", Dict{String,Any}())
+    data["tools_config"] = tools
+
+    gates = get(resolved, "gates", Dict{String,Any}())
+    data["gates_config"] = gates
+
+    tasks = get(resolved, "tasks", Dict{String,Any}())
+    data["tasks_config"] = tasks
+
+    return data
+end
 
 function get_llm_boot_prompt(persona_config::AbstractDict, target::AbstractString="generic_llm")
     profiles = get(persona_config, "llm_profiles", nothing)
-    profiles isa AbstractDict || return ""
+    base_prompt = ""
 
-    profile = get(profiles, target, nothing)
-    if profile isa AbstractDict
-        prompt = get(profile, "boot_prompt", nothing)
-        prompt isa AbstractString && return String(prompt)
+    if profiles isa AbstractDict
+        profile = get(profiles, target, nothing)
+        if profile isa AbstractDict
+            prompt = get(profile, "boot_prompt", nothing)
+            prompt isa AbstractString && (base_prompt = String(prompt))
+        end
+
+        if isempty(base_prompt)
+            generic = get(profiles, "generic_llm", nothing)
+            if generic isa AbstractDict
+                prompt = get(generic, "boot_prompt", nothing)
+                prompt isa AbstractString && (base_prompt = String(prompt))
+            end
+        end
+    end
+    
+    # ── Inject Modular Persona Expressiveness ──────────────────────────────
+    
+    extra_context = String[]
+    
+    # 1. Behavior & Directives
+    behavior = get(persona_config, "behavior_config", get(persona_config, "behavior", Dict()))
+    if behavior isa AbstractDict && !isempty(behavior)
+        block = "== BEHAVIOR & DIRECTIVES ==\n"
+        for key in ["core_directives", "pillars", "avoidances"]
+            vals = get(behavior, key, [])
+            if vals isa AbstractVector && !isempty(vals)
+                block *= uppercase(key) * ":\n"
+                for v in vals
+                    block *= " - " * string(v) * "\n"
+                end
+            end
+        end
+        push!(extra_context, strip(block))
+    end
+    
+    # 2. Tone, Gait, Rhythm
+    tone = get(persona_config, "tone_config", Dict())
+    gait = get(persona_config, "gait", Dict())
+    rhythm = get(persona_config, "rhythm", Dict())
+    
+    if !isempty(tone) || !isempty(gait) || !isempty(rhythm)
+        block = "== EXPRESSIVENESS & TONE ==\n"
+        for dict in (tone, gait, rhythm)
+            if dict isa AbstractDict
+                for (k, v) in dict
+                    if v isa AbstractString
+                        block *= uppercase(string(k)) * ": " * v * "\n"
+                    elseif v isa AbstractVector
+                        block *= uppercase(string(k)) * ": " * join([string(x) for x in v], ", ") * "\n"
+                    end
+                end
+            end
+        end
+        push!(extra_context, strip(block))
+    end
+    
+    if !isempty(extra_context)
+        return base_prompt * "\n\n" * join(extra_context, "\n\n")
     end
 
-    generic = get(profiles, "generic_llm", nothing)
-    if generic isa AbstractDict
-        prompt = get(generic, "boot_prompt", nothing)
-        prompt isa AbstractString && return String(prompt)
-    end
-
-    return ""
+    return base_prompt
 end

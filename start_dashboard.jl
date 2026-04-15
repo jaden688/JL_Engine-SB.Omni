@@ -1,6 +1,10 @@
-using JLEngine
-JLEngine.BYTE.dispatch("live_dashboard", Dict("port"=>8080))
-println("Dashboard server started on http://localhost:8080")
-while true
-    sleep(1)
+if !haskey(ENV, "SPARKBYTE_PORT")
+    ENV["SPARKBYTE_PORT"] = "8081"
 end
+
+if !haskey(ENV, "SPARKBYTE_HOST")
+    ENV["SPARKBYTE_HOST"] = "127.0.0.1"
+end
+
+println("start_dashboard.jl is deprecated. Launching SparkByte UI on http://$(ENV["SPARKBYTE_HOST"]):$(ENV["SPARKBYTE_PORT"])")
+include(joinpath(@__DIR__, "sparkbyte.jl"))

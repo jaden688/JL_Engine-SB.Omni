@@ -299,41 +299,12 @@ body{background:transparent;color:var(--green);font-family:'Consolas','Courier N
   <div class="tb-sep"></div>
   <span class="tb-label">Model</span>
   <select id="model-select">
+    <optgroup label="── 🧭 Auto-Router ──">
+      <option value="auto">🧭 AUTO (picks best model)</option>
+    </optgroup>
     <optgroup label="── Gemini (thinking ✦) ──">
-      <option value="gemini-3.1-pro-preview">✦ Gemini 3.1 Pro</option>
-      <option value="gemini-3.1-flash-lite-preview" selected>✦ Flash-Lite (fast)</option>
-      <option value="gemini-2.5-pro">✦ Gemini 2.5 Pro</option>
-      <option value="gemini-2.5-flash">✦ Gemini 2.5 Flash</option>
-      <option value="gemini-2.0-flash">🔧 Gemini 2.0 Flash</option>
-      <option value="gemini-2.0-flash-lite">🔧 Gemini 2.0 Flash-Lite</option>
-    </optgroup>
-    <optgroup label="── Gemma (chat only) ──">
-      <option value="gemma-4-31b-it">💬 Gemma 4 31B</option>
-      <option value="gemma-4-26b-a4b-it">💬 Gemma 4 26B</option>
-      <option value="gemma-3-27b-it">💬 Gemma 3 27B</option>
-      <option value="gemma-3-12b-it">💬 Gemma 3 12B</option>
-    </optgroup>
-    <optgroup label="── Grok (xAI) ──">
-      <option value="grok-4.20-multi-agent-0309">🔧 Grok 4.20 Multi-Agent ✦</option>
-      <option value="grok-4.20-reasoning">🔧 Grok 4.20 Reasoning ✦</option>
-      <option value="grok-3">🔧 Grok 3</option>
-      <option value="grok-3-fast">🔧 Grok 3 Fast</option>
-      <option value="grok-3-mini">🔧 Grok 3 Mini</option>
-      <option value="grok-3-mini-fast">🔧 Grok 3 Mini Fast</option>
-    </optgroup>
-    <optgroup label="── OpenAI ──">
-      <option value="gpt-4.1">🔧 GPT-4.1</option>
-      <option value="gpt-4o">🔧 GPT-4o</option>
-      <option value="gpt-4o-mini">🔧 GPT-4o Mini</option>
-      <option value="o4-mini">🔧 o4-mini</option>
-    </optgroup>
-    <optgroup label="── Ollama (Local) ──">
-      <option value="ollama:llama3.3">🔧 Llama 3.3</option>
-      <option value="ollama:llama3.2">🔧 Llama 3.2</option>
-      <option value="ollama:mistral">Mistral</option>
-      <option value="ollama:deepseek-r1">DeepSeek R1</option>
-      <option value="ollama:qwen3">🔧 Qwen 3</option>
-      <option value="ollama:phi4">🔧 Phi 4</option>
+      <option value="gemini-3.1-pro-preview" selected>✦ Gemini 3.1 Pro</option>
+      <option value="gemini-3.1-flash-lite-preview">✦ Flash-Lite (fast)</option>
     </optgroup>
     <optgroup label="── Cerebras ──">
       <option value="llama-4-scout-17b-16e-instruct">🔧 Llama 4 Scout 17B</option>
@@ -341,11 +312,6 @@ body{background:transparent;color:var(--green);font-family:'Consolas','Courier N
       <option value="llama3.3-70b">🔧 Llama 3.3 70B</option>
       <option value="qwen-3-32b">🔧 Qwen 3 32B</option>
       <option value="gpt-oss-120b">🔧 GPT-OSS 120B ✦</option>
-    </optgroup>
-    <optgroup label="── Azure AI ──">
-      <option value="azure:grok-4-20-reasoning">🔧 Grok 4 Reasoning (Azure) ✦</option>
-      <option value="azure:grok-4-20-non-reasoning">🔧 Grok 4 (Azure)</option>
-      <option value="azure:gpt-oss-120b">🔧 GPT-OSS 120B (Azure) ✦</option>
     </optgroup>
   </select>
   <div class="tb-sep"></div>
@@ -525,33 +491,33 @@ body{background:transparent;color:var(--green);font-family:'Consolas','Courier N
         <label>Active Model</label>
         <div class="sm-row">
           <select id="settings-model">
+            <optgroup label="── 🧭 Auto-Router ──">
+              <option value="auto">🧭 AUTO (picks best model)</option>
+            </optgroup>
+            <optgroup label="── OpenRouter ──">
+              <option value="anthropic/claude-sonnet-4-5">🔧 Claude Sonnet 4.5 (OR)</option>
+              <option value="anthropic/claude-haiku-4-5">🔧 Claude Haiku 4.5 (OR)</option>
+              <option value="meta-llama/llama-4-maverick">🔧 Llama 4 Maverick (OR)</option>
+              <option value="deepseek/deepseek-r1">✦ DeepSeek R1 (OR)</option>
+            </optgroup>
             <optgroup label="── Gemini ──">
-              <option value="gemini-3.1-pro">🔧 Gemini 3.1 Pro</option>
-              <option value="gemini-3.1-flash-lite-preview">🔧 Flash-Lite (fast)</option>
-              <option value="gemini-3.1-flash-live">Flash-Live</option>
-              <option value="gemma-4-26b-a4b-it">Gemma 4</option>
+              <option value="gemini-3.1-pro-preview">✦ Gemini 3.1 Pro</option>
+              <option value="gemini-3.1-flash-lite-preview">✦ Flash-Lite (fast)</option>
+            </optgroup>
+            <optgroup label="── Gemma (chat only) ──">
+              <option value="gemma-4-31b-it">💬 Gemma 4 31B</option>
+              <option value="gemma-4-26b-a4b-it">💬 Gemma 4 26B</option>
             </optgroup>
             <optgroup label="── Grok (xAI) ──">
               <option value="grok-4.20-multi-agent-0309">🔧 Grok 4.20 Multi-Agent ✦</option>
               <option value="grok-4.20-reasoning">🔧 Grok 4.20 Reasoning ✦</option>
-              <option value="grok-3">🔧 Grok 3</option>
-              <option value="grok-3-fast">🔧 Grok 3 Fast</option>
-              <option value="grok-3-mini">🔧 Grok 3 Mini</option>
-              <option value="grok-3-mini-fast">🔧 Grok 3 Mini Fast</option>
-            </optgroup>
-            <optgroup label="── OpenAI ──">
-              <option value="gpt-4.1">🔧 GPT-4.1</option>
-              <option value="gpt-4o">🔧 GPT-4o</option>
-              <option value="gpt-4o-mini">🔧 GPT-4o Mini</option>
-              <option value="o4-mini">🔧 o4-mini</option>
             </optgroup>
             <optgroup label="── Ollama (Local) ──">
               <option value="ollama:llama3.3">🔧 Llama 3.3</option>
-              <option value="ollama:llama3.2">🔧 Llama 3.2</option>
-              <option value="ollama:mistral">Mistral</option>
-              <option value="ollama:deepseek-r1">DeepSeek R1</option>
               <option value="ollama:qwen3">🔧 Qwen 3</option>
+              <option value="ollama:deepseek-r1">DeepSeek R1</option>
               <option value="ollama:phi4">🔧 Phi 4</option>
+              <option value="ollama:mistral">Mistral</option>
             </optgroup>
             <optgroup label="── Cerebras ──">
               <option value="llama-4-scout-17b-16e-instruct">🔧 Llama 4 Scout 17B</option>
@@ -568,6 +534,7 @@ body{background:transparent;color:var(--green);font-family:'Consolas','Courier N
           </select>
         </div>
         <div class="sm-hint">You can also switch models from the taskbar dropdown at the top.</div>
+        <div class="sm-hint" id="backend-probe-summary">Backend probe pending…</div>
       </div>
       <div class="sm-section">
         <label>Active Persona</label>
@@ -772,6 +739,100 @@ const tabBar=$('tab-bar'), terminal=$('terminal'), termInput=$('term-input');
 const searchInput=$('search-input'), searchResults=$('search-results');
 const sbFile=$('sb-file'), sbPos=$('sb-pos'), sbLang=$('sb-lang'), sbStatus=$('sb-status');
 const ctxMenu=$('ctx-menu');
+const _CEREBRAS_MODELS = new Set([
+  'llama-4-scout-17b-16e-instruct',
+  'llama-4-maverick-17b-128e-instruct',
+  'llama3.3-70b',
+  'qwen-3-32b',
+  'gpt-oss-120b',
+]);
+let _backendProbe = null;
+let _backendSummaryLast = '';
+
+function _providerForModel(model){
+  if(!model) return 'unknown';
+  if(model==='auto') return 'auto';
+  if(model.startsWith('azure:')) return 'azure';
+  if(model.startsWith('ollama:')) return 'ollama';
+  if(model.includes('/')) return 'openrouter';
+  if(_CEREBRAS_MODELS.has(model)) return 'cerebras';
+  if(model.startsWith('grok-')) return 'xai';
+  if(model.startsWith('gpt-') || model.startsWith('o4-') || model.startsWith('o3-')) return 'openai';
+  if(model.startsWith('gemini-') || model.startsWith('gemma-')) return 'gemini';
+  return 'unknown';
+}
+
+function _requestBackendProbe(force=false){
+  send({type:'builder_cmd',cmd:'probe_backends',force:!!force});
+}
+
+function _applyBackendProbe(d){
+  _backendProbe = d || {};
+  const providers = (d && d.providers) ? d.providers : {};
+  const modelStates = (d && d.models) ? d.models : {};
+  const selects = [modelSelect, $('settings-model')].filter(Boolean);
+  let switchedModel = '';
+
+  for(const sel of selects){
+    let selectedBlocked = false;
+    for(const opt of Array.from(sel.options||[])){
+      const val = (opt.value||'').trim();
+      if(!val) continue;
+      if(!opt.dataset.baseLabel){
+        opt.dataset.baseLabel = opt.textContent.replace(/^⛔\s*/,'').replace(/\s+\[unavailable\]$/,'');
+      }
+      if(val==='auto'){
+        opt.disabled = false;
+        opt.textContent = opt.dataset.baseLabel;
+        continue;
+      }
+      const provider = _providerForModel(val);
+      const p = providers[provider] || {};
+      const m = modelStates[val] || {};
+      const providerBlocked = (p.ok === false);
+      const modelBlocked = (m.ok === false);
+      const warned = providerBlocked || modelBlocked;
+      // Do not hard-disable options from probe data. Let users attempt the selected model directly.
+      opt.disabled = false;
+      opt.textContent = warned ? ('⚠ ' + opt.dataset.baseLabel + ' [probe warning]') : opt.dataset.baseLabel;
+    }
+    if(selectedBlocked){
+      const fallback = Array.from(sel.options||[]).find(o => !!o.value && !o.disabled);
+      if(fallback){
+        sel.value = fallback.value;
+        if(sel.id === 'model-select') switchedModel = fallback.value;
+      }
+    }
+  }
+
+  if(switchedModel){
+    send({type:'model_change',model:switchedModel});
+    const settingsModel = $('settings-model');
+    if(settingsModel) settingsModel.value = switchedModel;
+    appendChat('<div class="tool">⚙️ Model auto-switched to <b>'+escHtml(switchedModel)+'</b> because the previous backend/model is unavailable.</div>');
+  }
+
+  const pretty = {
+    gemini:'Gemini',xai:'xAI',openrouter:'OpenRouter',cerebras:'Cerebras',
+    openai:'OpenAI',azure:'Azure',ollama:'Ollama'
+  };
+  const online = [];
+  const offline = [];
+  for(const key of Object.keys(pretty)){
+    const s = providers[key];
+    if(!s) continue;
+    if(s.ok) online.push(pretty[key]);
+    else offline.push(pretty[key] + ' (' + (s.reason || 'unavailable') + ')');
+  }
+  const summary = 'Backends online: ' + (online.length ? online.join(', ') : 'none') +
+    ' · Offline: ' + (offline.length ? offline.join(', ') : 'none');
+  const summaryEl = $('backend-probe-summary');
+  if(summaryEl) summaryEl.textContent = summary;
+  if(summary !== _backendSummaryLast){
+    _backendSummaryLast = summary;
+    termPrint(summary, offline.length ? 'warn' : 'info');
+  }
+}
 
 /* ====== WEBSOCKET ====== */
 let _isGenerating = false;
@@ -787,11 +848,18 @@ function abortGeneration(){
 }
 function connect(){
   ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
-  ws.onopen=()=>{sbStatus.textContent='● Connected';sbStatus.style.color='var(--green)';loadPersonas();};
+  ws.onopen=()=>{
+    sbStatus.textContent='● Connected';
+    sbStatus.style.color='var(--green)';
+    loadPersonas();
+    send({type:'builder_cmd',cmd:'get_settings'});
+    _requestBackendProbe(false);
+  };
   ws.onclose=()=>{sbStatus.textContent='● Disconnected';sbStatus.style.color='#f44';_setGenerating(false);setTimeout(connect,1500);};
   ws.onmessage=e=>{
     const d=JSON.parse(e.data);
     if(d.type==='ui_update'){gearVal.textContent=d.gear;modeVal.textContent=d.modes.join(' · ');}
+    else if(d.type==='generation_started'){_setGenerating(true);}
     else if(d.type==='confirm'){
       _setGenerating(false);
       const prompt=(d.text||'Run this tool?').replaceAll('**','');
@@ -844,6 +912,7 @@ function connect(){
         else{el.textContent='NOT SET';el.className='sm-badge missing';}
       }
     }
+    else if(d.type==='backend_probe'){_applyBackendProbe(d);}
     else if(d.type==='history_list'){_renderHistoryList(d.sessions);}
     else if(d.type==='session_turns'){_renderSessionTurns(d.turns);}
     else if(d.type==='telemetry_update'){_applyTelemetry(d);}
@@ -851,10 +920,18 @@ function connect(){
     else if(d.type==='forge_line'){_forgeLine(d);}
     else if(d.type==='forge_done'){_forgeDone(d);}
     else if(d.type==='forge_resubmit_result'){_forgeResubmitResult(d);}
+    else if(d.type==='text'||d.type==='input_text'){appendChat('<div class="msg spark">'+marked.parse(String(d.text||d.content||''))+'</div>');}
+    else if(d.type==='function'){appendChat('<div class="tool">ƒ '+escapeHtml(d.name||'function')+'('+escapeHtml(JSON.stringify(d.arguments||d.args||{}))+')</div>');}
+    else if(d.type==='function_call_output'){appendChat('<div class="tool">↳ '+escapeHtml(String(d.output??d.result??'')).slice(0,2000)+'</div>');}
+    else if(d.type==='image_url'){const u=d.url||d.image_url||'';appendChat('<div class="msg spark"><img src="'+escapeHtml(u)+'" style="max-width:100%;border-radius:8px"/></div>');}
+    else if(d.type==='input_image'){const src=d.data_url||(d.mime&&d.data?('data:'+d.mime+';base64,'+d.data):(d.data||''));if(src)appendChat('<div class="msg user"><img src="'+escapeHtml(src)+'" style="max-width:100%;border-radius:8px"/></div>');}
+    else if(d.type==='object'){appendChat('<div class="tool"><pre style="white-space:pre-wrap;margin:0">'+escapeHtml(JSON.stringify(d.data??d.object??d,null,2))+'</pre></div>');}
+    else{console.debug('[ws] unhandled type',d.type,d);}
   };
 }
 
 function send(obj){ws&&ws.readyState===1&&ws.send(JSON.stringify(obj));}
+function escapeHtml(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 
 /* ====== TOOL ACTIVE INDICATOR ====== */
 let _toolTimer = null, _toolStartMs = 0;
@@ -1448,6 +1525,7 @@ function openSettings(){
   $('settings-ws-status').style.color=ws&&ws.readyState===1?'var(--green)':'#f44';
   // Request current API key status from server
   send({type:'builder_cmd',cmd:'get_settings'});
+  _requestBackendProbe(false);
 }
 function closeSettings(){$('settings-overlay').classList.remove('visible');}
 function saveSettings(){
@@ -1464,13 +1542,18 @@ function saveSettings(){
   if(openaiKey)    payload.openai_api_key=openaiKey;
   if(cerebrasKey)  payload.cerebras_api_key=cerebrasKey;
   if(key||xaiKey||openaiKey||cerebrasKey) send(payload);
+  _requestBackendProbe(true);
   // Clear fields optimistically
   if(key){$('settings-apikey').value='';}
   if(xaiKey){$('settings-xai-key').value='';}
   if(openaiKey){$('settings-openai-key').value='';}
   if(cerebrasKey){$('settings-cerebras-key').value='';}
   // Apply model/persona changes
-  if(model!==modelSelect.value){modelSelect.value=model;modelSelect.dispatchEvent(new Event('change'));}
+  const modelOpt = Array.from(modelSelect.options||[]).find(o=>o.value===model);
+  if(model!==modelSelect.value && (!modelOpt || !modelOpt.disabled)){
+    modelSelect.value=model;
+    modelSelect.dispatchEvent(new Event('change'));
+  }
   if(persona!==personaSelect.value){personaSelect.value=persona;personaSelect.dispatchEvent(new Event('change'));}
   closeSettings();
   termPrint('Settings saved.','info');

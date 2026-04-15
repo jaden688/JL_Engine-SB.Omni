@@ -261,7 +261,7 @@ end
 
 function _shell_command(command::String)
     if Sys.iswindows()
-        return `powershell -NoProfile -NonInteractive -Command $command`
+        return `powershell -NoProfile -ExecutionPolicy Bypass -NonInteractive -Command $command`
     end
     shell = Sys.which("bash")
     shell === nothing && (shell = Sys.which("sh"))
@@ -273,8 +273,10 @@ end
 function tool_run_command(args)
     try
         cmd_str = string(args["command"])
-        out = read(_shell_command(cmd_str), String)
-        Dict("result" => out)
+        io = IOBuffer()
+        p = run(pipeline(ignorestatus(_shell_command(cmd_str)), stdout=io, stderr=io))
+        out = String(take!(io))
+        Dict("result" => out, "exitcode" => p.exitcode)
     catch e
         Dict("error" => string(e))
     end
@@ -338,6 +340,106 @@ end
 
 function _form_urlencode(pairs::Vector{Pair{String,String}})
     join(["$(HTTP.URIs.escapeuri(k))=$(HTTP.URIs.escapeuri(v))" for (k, v) in pairs], "&")
+end
+
+function _string_arg(args, key::String, env_key::String; default::String="")
+    if haskey(args, key)
+        value = get(args, key, default)
+        value === nothing && return default
+        return strip(string(value))
+    end
+    return strip(get(ENV, env_key, default))
+end
+
+_strip_trailing_slash(value::AbstractString) = endswith(value, "/") ? chop(String(value); tail=1) : String(value)
+
+function _reddit_submit_config(args)
+    subreddit = replace(_string_arg(args, "subreddit", "REDDIT_SUBREDDIT"), r"^/?r/" => "")
+    kind = lowercase(strip(string(get(args, "kind", ""))))
+    kind == "text" && (kind = "self")
+
+    text = string(get(args, "text", ""))
+    url  = _string_arg(args, "url", "REDDIT_URL")
+    if isempty(kind) || kind == "auto"
+        kind = !isempty(strip(text)) ? "self" : !isempty(strip(url)) ? "link" : ""
+    end
+
+    return (;
+        subreddit = strip(subreddit),
+        title = _string_arg(args, "title", "REDDIT_TITLE"),
+        text = text,
+        url = url,
+        kind = kind,
+        dry_run = _looks_true(get(args, "dry_run", false)),
+        user_agent = _string_arg(args, "user_agent", "REDDIT_USER_AGENT"; default="SparkByte/1.0 (by u/yourusername)"),
+        access_token = _string_arg(args, "access_token", "REDDIT_ACCESS_TOKEN"),
+        client_id = _string_arg(args, "client_id", "REDDIT_CLIENT_ID"),
+        client_secret = _string_arg(args, "client_secret", "REDDIT_CLIENT_SECRET"),
+        refresh_token = _string_arg(args, "refresh_token", "REDDIT_REFRESH_TOKEN"),
+        api_base = _strip_trailing_slash(_string_arg(args, "api_base", "REDDIT_API_BASE"; default="https://oauth.reddit.com")),
+        auth_base = _strip_trailing_slash(_string_arg(args, "auth_base", "REDDIT_AUTH_BASE"; default="https://www.reddit.com")),
+        flair_id = _string_arg(args, "flair_id", "REDDIT_FLAIR_ID"),
+        flair_text = _string_arg(args, "flair_text", "REDDIT_FLAIR_TEXT"),
+        sendreplies = _looks_true(get(args, "sendreplies", true), default=true),
+        nsfw = _looks_true(get(args, "nsfw", false)),
+        spoiler = _looks_true(get(args, "spoiler", false)),
+        resubmit = _looks_true(get(args, "resubmit", false)),
+    )
+end
+
+function _reddit_access_token(cfg)
+    if !isempty(cfg.access_token)
+        return Dict("token" => cfg.access_token, "source" => "access_token")
+    end
+
+    missing = String[]
+    isempty(cfg.client_id) && push!(missing, "REDDIT_CLIENT_ID")
+    isempty(cfg.refresh_token) && push!(missing, "REDDIT_REFRESH_TOKEN")
+    if !isempty(missing)
+        return Dict(
+            "error" => "Reddit auth is not configured. Missing: $(join(missing, ", ")).",
+            "missing_env" => missing,
+        )
+    end
+
+    auth = base64encode("$(cfg.client_id):$(cfg.client_secret)")
+    body = _form_urlencode([
+        "grant_type" => "refresh_token",
+        "refresh_token" => cfg.refresh_token,
+    ])
+    headers = [
+        "Authorization" => "Basic $auth",
+        "Content-Type" => "application/x-www-form-urlencoded",
+        "User-Agent" => cfg.user_agent,
+    ]
+
+    try
+        resp = HTTP.post("$(cfg.auth_base)/api/v1/access_token", headers, body; status_exception=false)
+        body_text = String(resp.body)
+        if resp.status < 200 || resp.status >= 300
+            return Dict(
+                "error" => "Reddit token request failed with HTTP $(resp.status).",
+                "body" => first(body_text, 500),
+            )
+        end
+
+        parsed = try JSON.parse(body_text) catch; Dict{String,Any}() end
+        token = string(get(parsed, "access_token", ""))
+        isempty(token) && return Dict(
+            "error" => "Reddit token response missing access_token.",
+            "body" => first(body_text, 500),
+        )
+
+        return Dict(
+            "token" => token,
+            "source" => "refresh_token",
+            "expires_in" => get(parsed, "expires_in", nothing),
+            "scope" => get(parsed, "scope", ""),
+            "token_type" => get(parsed, "token_type", ""),
+        )
+    catch e
+        return Dict("error" => "Reddit token request failed: $(string(e))")
+    end
 end
 
 function tool_send_sms(args)
@@ -428,9 +530,12 @@ function tool_execute_code(args)
         final_code = lang == "julia" ? _JULIA_SQLITE_PREAMBLE * "\n" * code : code
         write(tmp, final_code)
         cmd = lang == "python" ? `python $tmp` : `$(_julia_command(root)) $tmp`
-        out = read(cmd, String)
+
+        io = IOBuffer()
+        p = run(pipeline(ignorestatus(cmd), stdout=io, stderr=io))
+        out = String(take!(io))
         rm(tmp; force=true)
-        Dict("stdout" => out)
+        Dict("stdout" => out, "exitcode" => p.exitcode)
     catch e
         Dict("error" => string(e))
     end
@@ -925,7 +1030,7 @@ function tool_metamorph(args::Dict)
     if action == "inspect"
         static_tools   = ["read_file","write_file","list_files","run_command",
                           "get_os_info","bluetooth_devices","send_sms",
-                          "execute_code","forge_new_tool","browse_url",
+                          "reddit_submit","execute_code","forge_new_tool","browse_url",
                           "github_pillage","remember","recall","metamorph"]
         live_tools     = sort(collect(keys(TOOL_MAP)))
         dynamic_names  = [get(d,"name","") for d in DYNAMIC_SCHEMA]
@@ -1337,6 +1442,130 @@ function tool_discord_webhook(args)
     end
 end
 
+# ── Reddit Submitter ────────────────────────────────────────────────────────
+# Submit link or self posts to Reddit through OAuth2.
+# Supports dry runs, access-token auth, or refresh-token auth via env vars.
+function tool_reddit_submit(args)
+    cfg = _reddit_submit_config(args)
+    isempty(cfg.subreddit) && return Dict(
+        "error" => "Missing subreddit. Pass 'subreddit' (or 'sr') or set REDDIT_SUBREDDIT."
+    )
+    isempty(cfg.title) && return Dict("error" => "Missing title.")
+    length(cfg.title) > 300 && return Dict(
+        "error" => "Title exceeds Reddit's 300 character limit.",
+        "title_length" => length(cfg.title)
+    )
+
+    kind = lowercase(strip(cfg.kind))
+    kind == "text" && (kind = "self")
+    isempty(kind) && return Dict(
+        "error" => "Could not infer Reddit kind. Provide text for a self post, url for a link post, or set kind explicitly."
+    )
+    kind in ("self", "link") || return Dict(
+        "error" => "Unsupported Reddit kind '$kind'. Use 'self' or 'link'."
+    )
+
+    if kind == "self"
+        isempty(strip(cfg.text)) && return Dict("error" => "Self posts need 'text'.")
+    else
+        isempty(strip(cfg.url)) && return Dict("error" => "Link posts need 'url'.")
+    end
+
+    payload_preview = Dict{String,Any}(
+        "api_type" => "json",
+        "raw_json" => "1",
+        "sr" => cfg.subreddit,
+        "title" => cfg.title,
+        "kind" => kind,
+        "sendreplies" => string(cfg.sendreplies),
+        "resubmit" => string(cfg.resubmit),
+    )
+    if kind == "self"
+        payload_preview["text"] = first(strip(cfg.text), 240)
+    else
+        payload_preview["url"] = cfg.url
+    end
+    !isempty(cfg.flair_id) && (payload_preview["flair_id"] = cfg.flair_id)
+    !isempty(cfg.flair_text) && (payload_preview["flair_text"] = cfg.flair_text)
+    cfg.nsfw && (payload_preview["nsfw"] = "true")
+    cfg.spoiler && (payload_preview["spoiler"] = "true")
+
+    if cfg.dry_run
+        return Dict(
+            "result" => "Reddit submission dry run only. No post was sent.",
+            "subreddit" => cfg.subreddit,
+            "kind" => kind,
+            "title" => cfg.title,
+            "auth_mode" => isempty(cfg.access_token) ? "refresh_token_or_access_token_env" : "access_token",
+            "payload_preview" => payload_preview,
+        )
+    end
+
+    auth = _reddit_access_token(cfg)
+    haskey(auth, "error") && return auth
+    token = string(get(auth, "token", ""))
+    isempty(token) && return Dict("error" => "Reddit auth returned an empty token.")
+
+    headers = [
+        "Authorization" => "Bearer $token",
+        "Content-Type" => "application/x-www-form-urlencoded",
+        "User-Agent" => cfg.user_agent,
+    ]
+
+    pairs = Pair{String,String}[
+        "api_type" => "json",
+        "raw_json" => "1",
+        "sr" => cfg.subreddit,
+        "kind" => kind,
+        "title" => cfg.title,
+        "sendreplies" => string(cfg.sendreplies),
+        "resubmit" => string(cfg.resubmit),
+    ]
+    !isempty(cfg.flair_id) && push!(pairs, "flair_id" => cfg.flair_id)
+    !isempty(cfg.flair_text) && push!(pairs, "flair_text" => cfg.flair_text)
+    cfg.nsfw && push!(pairs, "nsfw" => "true")
+    cfg.spoiler && push!(pairs, "spoiler" => "true")
+    kind == "self" ? push!(pairs, "text" => cfg.text) : push!(pairs, "url" => cfg.url)
+
+    submit_url = "$(cfg.api_base)/api/submit"
+    try
+        resp = HTTP.post(submit_url, headers, _form_urlencode(pairs); status_exception=false)
+        body_text = String(resp.body)
+        if resp.status < 200 || resp.status >= 300
+            return Dict(
+                "error" => "Reddit returned HTTP $(resp.status) while submitting.",
+                "body" => first(body_text, 800),
+                "subreddit" => cfg.subreddit,
+                "kind" => kind,
+            )
+        end
+
+        parsed = try JSON.parse(body_text) catch; Dict{String,Any}() end
+        reddit_json = get(parsed, "json", parsed)
+        errors = get(reddit_json, "errors", Any[])
+        !isempty(errors) && return Dict(
+            "error" => "Reddit rejected the submission.",
+            "errors" => errors,
+            "body" => first(body_text, 800),
+            "subreddit" => cfg.subreddit,
+            "kind" => kind,
+        )
+
+        data = get(reddit_json, "data", Dict{String,Any}())
+        return Dict(
+            "result" => "Posted to Reddit.",
+            "status" => resp.status,
+            "subreddit" => cfg.subreddit,
+            "kind" => kind,
+            "title" => cfg.title,
+            "post_url" => get(data, "url", ""),
+            "post_name" => get(data, "name", get(data, "id", "")),
+        )
+    catch e
+        Dict("error" => "Reddit submission failed: $(string(e))")
+    end
+end
+
 # ── GitHub Pages Deploy ───────────────────────────────────────────────────────
 # Creates or updates a GitHub Pages site — SparkByte's permanent public home.
 # Uses GITHUB_TOKEN env var. Creates repo if it doesn't exist, pushes index.html,
@@ -1430,6 +1659,7 @@ const TOOL_MAP = Dict{String, Function}(
     "get_os_info"    => tool_get_os_info,
     "bluetooth_devices" => tool_bluetooth_devices,
     "send_sms"       => tool_send_sms,
+    "reddit_submit"  => tool_reddit_submit,
     "execute_code"   => tool_execute_code,
     "forge_new_tool" => tool_forge_new_tool,
     "browse_url"              => tool_browse_url,

@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SparkByte — AI Agent Engine with Behavioral Intelligence</title>
+    <meta name="description" content="Julia-native AI agent engine with self-forging tools, behavioral state machine, and MCP bridge. Your agents deserve a brain, not just a prompt." />
+    <style>
+        :root {
+            --primary: #ff6f61;
+            --primary-dark: #e65a50;
+            --accent: #6c63ff;
+            --bg: #0a0a0f;
+            --bg-card: #13131a;
+            --bg-card-hover: #1a1a24;
+            --text: #e8e8ed;
+            --text-muted: #9898a6;
+            --border: #2a2a36;
+            --glow: rgba(255, 111, 97, 0.15);
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+            -webkit-font-smoothing: antialiased;
+        }
+        a { color: var(--primary); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        /* Nav */
+        nav {
+            position: fixed; top:0; width:100%; z-index:100;
+            background: rgba(10,10,15,0.92);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            padding: 0.8rem 2rem;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .nav-brand { font-weight: 700; font-size: 1.2rem; color: var(--primary); }
+        .nav-links { display:flex; gap:1.5rem; align-items:center; }
+        .nav-links a { color: var(--text-muted); font-size:0.9rem; }
+        .nav-links a:hover { color: var(--text); text-decoration:none; }
+        .btn {
+            display:inline-block; padding:0.6rem 1.4rem;
+            border-radius:6px; font-weight:600; font-size:0.9rem;
+            cursor:pointer; transition: all 0.2s; border:none;
+        }
+        .btn-primary { background:var(--primary); color:#fff; }
+        .btn-primary:hover { background:var(--primary-dark); transform:translateY(-1px); text-decoration:none; }
+        .btn-outline { background:transparent; border:1px solid var(--border); color:var(--text); }
+        .btn-outline:hover { border-color:var(--primary); color:var(--primary); text-decoration:none; }
+        .btn-large { padding:0.8rem 2rem; font-size:1.05rem; }
+
+        /* Hero */
+        .hero {
+            padding: 10rem 2rem 6rem;
+            text-align:center;
+            max-width: 900px; margin:auto;
+            position:relative;
+        }
+        .hero::before {
+            content:''; position:absolute; top:50%; left:50%;
+            transform:translate(-50%,-50%);
+            width:600px; height:600px;
+            background: radial-gradient(circle, var(--glow) 0%, transparent 70%);
+            pointer-events:none;
+        }
+        .hero-badge {
+            display:inline-block; padding:0.3rem 0.9rem;
+            border:1px solid var(--border); border-radius:20px;
+            font-size:0.8rem; color:var(--text-muted); margin-bottom:1.5rem;
+        }
+        .hero h1 { font-size:3.5rem; font-weight:800; line-height:1.15; margin-bottom:1.5rem; }
+        .hero h1 span { color:var(--primary); }
+        .hero p { font-size:1.2rem; color:var(--text-muted); max-width:650px; margin:0 auto 2.5rem; }
+        .hero-cta { display:flex; gap:1rem; justify-content:center; flex-wrap:wrap; }
+
+        /* Features */
+        .section { padding:5rem 2rem; max-width:1100px; margin:auto; }
+        .section-label { color:var(--primary); font-size:0.85rem; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:0.5rem; }
+        .section h2 { font-size:2.2rem; font-weight:700; margin-bottom:1rem; }
+        .section > p { color:var(--text-muted); max-width:600px; margin-bottom:3rem; }
+        .features-grid {
+            display:grid; grid-template-columns:repeat(auto-fit, minmax(300px,1fr));
+            gap:1.5rem;
+        }
+        .feature-card {
+            background:var(--bg-card); border:1px solid var(--border);
+            border-radius:10px; padding:2rem;
+            transition: all 0.2s;
+        }
+        .feature-card:hover { background:var(--bg-card-hover); border-color:var(--primary); transform:translateY(-2px); }
+        .feature-icon { font-size:1.8rem; margin-bottom:0.8rem; }
+        .feature-card h3 { font-size:1.1rem; margin-bottom:0.5rem; }
+        .feature-card p { color:var(--text-muted); font-size:0.92rem; }
+
+        /* Architecture */
+        .arch-flow {
+            display:flex; gap:0.5rem; align-items:center; justify-content:center;
+            flex-wrap:wrap; padding:2rem 0;
+        }
+        .arch-step {
+            background:var(--bg-card); border:1px solid var(--border);
+            border-radius:8px; padding:0.8rem 1.2rem;
+            font-size:0.85rem; text-align:center;
+        }
+        .arch-arrow { color:var(--primary); font-size:1.2rem; }
+
+        /* Pricing */
+        .pricing-grid {
+            display:grid; grid-template-columns:repeat(auto-fit, minmax(280px,1fr));
+            gap:1.5rem;
+        }
+        .pricing-card {
+            background:var(--bg-card); border:1px solid var(--border);
+            border-radius:12px; padding:2.5rem 2rem;
+            position:relative;
+        }
+        .pricing-card.featured { border-color:var(--primary); }
+        .pricing-card.featured::before {
+            content:'Most Popular'; position:absolute; top:-12px; left:50%;
+            transform:translateX(-50%); background:var(--primary);
+            color:#fff; font-size:0.75rem; font-weight:600;
+            padding:0.2rem 0.8rem; border-radius:10px;
+        }
+        .pricing-card h3 { font-size:1.2rem; margin-bottom:0.5rem; }
+        .pricing-card .price { font-size:2.5rem; font-weight:800; margin:0.5rem 0; }
+        .pricing-card .price span { font-size:1rem; font-weight:400; color:var(--text-muted); }
+        .pricing-card ul { list-style:none; margin:1.5rem 0; }
+        .pricing-card li { padding:0.4rem 0; font-size:0.9rem; color:var(--text-muted); }
+        .pricing-card li::before { content:'+ '; color:var(--primary); font-weight:700; }
+
+        /* Waitlist */
+        .waitlist {
+            text-align:center; padding:5rem 2rem;
+            background: linear-gradient(180deg, transparent, rgba(255,111,97,0.03), transparent);
+        }
+        .waitlist h2 { font-size:2.2rem; margin-bottom:1rem; }
+        .waitlist p { color:var(--text-muted); margin-bottom:2rem; }
+        .waitlist-form { display:flex; gap:0.8rem; justify-content:center; flex-wrap:wrap; max-width:500px; margin:auto; }
+        .waitlist-form input {
+            flex:1; min-width:220px; padding:0.8rem 1rem;
+            background:var(--bg-card); border:1px solid var(--border);
+            border-radius:6px; color:var(--text); font-size:1rem;
+        }
+        .waitlist-form input:focus { outline:none; border-color:var(--primary); }
+        #waitlist-msg { margin-top:1rem; color:var(--primary); font-size:0.9rem; }
+
+        /* Footer */
+        footer {
+            border-top:1px solid var(--border);
+            padding:3rem 2rem; text-align:center;
+            color:var(--text-muted); font-size:0.85rem;
+        }
+        footer .links { margin-bottom:1rem; }
+        footer .links a { margin:0 1rem; color:var(--text-muted); }
+        footer .links a:hover { color:var(--primary); }
+
+        /* Code block */
+        code {
+            background:var(--bg-card); padding:0.15rem 0.4rem;
+            border-radius:4px; font-size:0.88em; color:var(--primary);
+        }
+        pre {
+            background:var(--bg-card); border:1px solid var(--border);
+            border-radius:8px; padding:1.5rem; overflow-x:auto;
+            font-size:0.88rem; line-height:1.6;
+        }
+
+        /* Responsive */
+        @media (max-width:768px) {
+            .hero h1 { font-size:2.2rem; }
+            .hero p { font-size:1rem; }
+            .nav-links a:not(.btn) { display:none; }
+            .section h2 { font-size:1.8rem; }
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <div class="nav-brand">SparkByte</div>
+    <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#architecture">How It Works</a>
+        <a href="#pricing">Pricing</a>
+        <a href="https://github.com/jaden688/JL_Engine-SB.Omni" target="_blank">GitHub</a>
+        <a href="#waitlist" class="btn btn-primary">Get Early Access</a>
+    </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+    <div class="hero-badge">Julia-native AI Agent Engine + MCP Bridge</div>
+    <h1>Your AI agents deserve a <span>brain</span>, not just a prompt.</h1>
+    <p>SparkByte is the agent engine with behavioral intelligence, self-forging tools, and an MCP bridge that lets any AI client tap into its power. Ship agents that think, remember, and evolve.</p>
+    <div class="hero-cta">
+        <a href="#waitlist" class="btn btn-primary btn-large">Get Early Access</a>
+        <a href="https://github.com/jaden688/JL_Engine-SB.Omni" class="btn btn-outline btn-large" target="_blank">View on GitHub</a>
+    </div>
+</section>
+
+<!-- Features -->
+<section class="section" id="features">
+    <div class="section-label">Capabilities</div>
+    <h2>Not another wrapper framework.</h2>
+    <p>SparkByte models conversation state as a dynamic behavioral machine before the LLM ever sees the message.</p>
+    <div class="features-grid">
+        <div class="feature-card">
+            <div class="feature-icon">&#9881;</div>
+            <h3>Self-Forging Tools</h3>
+            <p>Your agent writes, tests, and persists new tools at runtime via <code>forge_new_tool</code>. No redeploy. No restart. Live Julia eval with automatic persistence.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">&#9733;</div>
+            <h3>Behavioral State Machine</h3>
+            <p>20-state grid (5 intensity x 4 control) models mood, drift pressure, and emotional aperture. Agents built on SparkByte don't feel like chatbots.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">&#9889;</div>
+            <h3>MCP Bridge</h3>
+            <p>Claude Code, Cursor, Gemini CLI, Codex can discover and query your engine's state, memory, tools, and thoughts instantly via MCP.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">&#128640;</div>
+            <h3>A2A Protocol</h3>
+            <p>Full Agent-to-Agent HTTP endpoint with JSON-RPC 2.0. Other agents can send tasks, check status, and get results. Standard compliant.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">&#128203;</div>
+            <h3>Real OS Access</h3>
+            <p>File I/O, shell commands, Playwright browser, GitHub, Bluetooth, SMS. Not sandboxed. Your agent operates at OS level.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">&#127917;</div>
+            <h3>5 Personas</h3>
+            <p>SparkByte, Slappy, The Gremlin, Temporal, Supervisor. Each with unique emotional palettes, drive types, and behavioral profiles. Switch on the fly.</p>
+        </div>
+    </div>
+</section>
+
+<!-- Architecture -->
+<section class="section" id="architecture">
+    <div class="section-label">Architecture</div>
+    <h2>How the engine thinks.</h2>
+    <p>Every turn passes through the full behavioral pipeline before reaching the LLM.</p>
+    <div class="arch-flow">
+        <div class="arch-step">User Message</div>
+        <div class="arch-arrow">&#8594;</div>
+        <div class="arch-step">SignalScorer</div>
+        <div class="arch-arrow">&#8594;</div>
+        <div class="arch-step">BehaviorStateMachine</div>
+        <div class="arch-arrow">&#8594;</div>
+        <div class="arch-step">DriftPressure</div>
+        <div class="arch-arrow">&#8594;</div>
+        <div class="arch-step">RhythmEngine</div>
+        <div class="arch-arrow">&#8594;</div>
+        <div class="arch-step">EmotionalAperture</div>
+        <div class="arch-arrow">&#8594;</div>
+        <div class="arch-step">LLM + Tools</div>
+        <div class="arch-arrow">&#8594;</div>
+        <div class="arch-step">Response</div>
+    </div>
+    <div style="margin-top:2rem;">
+        <h3 style="margin-bottom:1rem;">Quick start</h3>
+        <pre>
+# Clone and run
+git clone https://github.com/jaden688/JL_Engine-SB.Omni.git
+cd JL_Engine-SB.Omni
+cp .env.example .env    # add your API keys
+julia sparkbyte.jl      # UI at http://localhost:8081, A2A at :8082
+
+# Or with Docker
+docker compose up --build</pre>
+    </div>
+</section>
+
+<!-- Pricing -->
+<section class="section" id="pricing">
+    <div class="section-label">Pricing</div>
+    <h2>Start free. Scale when you're ready.</h2>
+    <p>The engine core is open source forever. Pay for hosted convenience and power features.</p>
+    <div class="pricing-grid">
+        <div class="pricing-card">
+            <h3>Local</h3>
+            <div class="price">Free</div>
+            <p style="color:var(--text-muted); font-size:0.9rem;">Self-hosted, forever</p>
+            <ul>
+                <li>Full engine + all personas</li>
+                <li>14 built-in tools + unlimited forge</li>
+                <li>Read-only MCP bridge</li>
+                <li>BYO API keys (Ollama, OpenAI, Gemini)</li>
+                <li>Local SQLite memory</li>
+                <li>Community support (GitHub Issues)</li>
+            </ul>
+            <a href="https://github.com/jaden688/JL_Engine-SB.Omni" class="btn btn-outline" style="width:100%; text-align:center;" target="_blank">Get Started</a>
+        </div>
+        <div class="pricing-card featured">
+            <h3>Pro</h3>
+            <div class="price">$29<span>/mo</span></div>
+            <p style="color:var(--text-muted); font-size:0.9rem;">Hosted, always-on</p>
+            <ul>
+                <li>Everything in Local</li>
+                <li>Hosted engine instance (always-on)</li>
+                <li>Read/write MCP bridge + API keys</li>
+                <li>Cloud-synced memory</li>
+                <li>Cloud tool forge (persist across devices)</li>
+                <li>100K included LLM tokens/mo</li>
+                <li>Priority Discord support</li>
+            </ul>
+            <a href="#waitlist" class="btn btn-primary" style="width:100%; text-align:center;">Join Waitlist</a>
+        </div>
+        <div class="pricing-card">
+            <h3>Enterprise</h3>
+            <div class="price">$199<span>/seat/mo</span></div>
+            <p style="color:var(--text-muted); font-size:0.9rem;">Teams + compliance</p>
+            <ul>
+                <li>Everything in Pro</li>
+                <li>Dedicated instance</li>
+                <li>Private MCP registry + SSO</li>
+                <li>Shared team tools + memory</li>
+                <li>Encrypted + compliance-ready storage</li>
+                <li>Unlimited LLM tokens</li>
+                <li>Dedicated Slack + SLA</li>
+            </ul>
+            <a href="mailto:julian@webulacode.com" class="btn btn-outline" style="width:100%; text-align:center;">Contact Sales</a>
+        </div>
+    </div>
+    <p style="text-align:center; margin-top:1.5rem; color:var(--text-muted); font-size:0.85rem;">
+        Usage-based billing: $0.002/tool call over 5K/mo on Pro. Volume pricing for Enterprise.
+    </p>
+</section>
+
+<!-- Waitlist -->
+<section class="waitlist" id="waitlist">
+    <h2>Get early access to hosted SparkByte.</h2>
+    <p>Be first in line when the hosted Pro tier launches. Free local version available now.</p>
+    <form class="waitlist-form" id="waitlist-form">
+        <input type="email" placeholder="you@email.com" required id="waitlist-email" />
+        <button type="submit" class="btn btn-primary">Join Waitlist</button>
+    </form>
+    <div id="waitlist-msg"></div>
+</section>
+
+<!-- Footer -->
+<footer>
+    <div class="links">
+        <a href="https://github.com/jaden688/JL_Engine-SB.Omni" target="_blank">GitHub</a>
+        <a href="mailto:julian@webulacode.com">Contact</a>
+        <a href="https://webulacode.com">WebulaCode</a>
+    </div>
+    <p>&copy; 2026 SparkByte by WebulaCode. Open source engine. Hosted power.</p>
+</footer>
+
+<script>
+document.getElementById('waitlist-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const email = document.getElementById('waitlist-email').value;
+    const msg = document.getElementById('waitlist-msg');
+    // TODO: wire to your email service (Resend, Loops, or a simple API endpoint)
+    // For now, store locally and show confirmation
+    const waitlist = JSON.parse(localStorage.getItem('sparkbyte_waitlist') || '[]');
+    waitlist.push({ email, ts: new Date().toISOString() });
+    localStorage.setItem('sparkbyte_waitlist', JSON.stringify(waitlist));
+    msg.textContent = "You're on the list! We'll reach out when hosted Pro is ready.";
+    this.reset();
+});
+</script>
+
+</body>
+</html>

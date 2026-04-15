@@ -37,6 +37,13 @@ function _redact_sensitive_text(value)
     return text
 end
 
+function _thinking_config_snapshot(gen_config)
+    thinking_cfg = get(gen_config, "thinking_config", Dict{String,Any}())
+    level = get(thinking_cfg, "thinkingLevel", get(thinking_cfg, "thinking_level", nothing))
+    budget = get(thinking_cfg, "thinkingBudget", get(thinking_cfg, "thinking_budget", nothing))
+    return level, budget
+end
+
 function init_telemetry(project_root::String; db=nothing)
     telem_root = _telemetry_root(project_root)
     _telem_path[] = joinpath(telem_root, "full_telemetry.jsonl")
@@ -143,13 +150,16 @@ function log_engine_snapshot(snapshot::Dict)
 end
 
 function log_api_request(model, gen_config, history_len, loop_iter)
+    thinking_level, thinking_budget = _thinking_config_snapshot(gen_config)
     log_event("api_request", Dict{String,Any}(
         "model"        => string(model),
         "loop_iter"    => Int(loop_iter),
         "history_len"  => Int(history_len),
         "temperature"  => get(gen_config, "temperature", nothing),
         "top_p"        => get(gen_config, "topP", nothing),
-        "thinking"     => get(get(gen_config, "thinking_config", Dict()), "thinking_level", "none"),
+        "thinking"     => thinking_level === nothing ? string(thinking_budget === nothing ? "none" : "budget") : string("level"),
+        "thinking_level" => thinking_level === nothing ? "none" : string(thinking_level),
+        "thinking_budget" => thinking_budget === nothing ? "none" : thinking_budget,
     ))
 end
 
@@ -273,6 +283,7 @@ end
 
 """Log the causal chain: engine snapshot → temperature/topP decision."""
 function log_param_decision(gen_config, snapshot)
+    thinking_level, thinking_budget = _thinking_config_snapshot(gen_config)
     aperture = get(snapshot, "aperture_state", Dict())
     drift    = get(snapshot, "drift",          Dict())
     base_temp  = get(aperture, "temp",              0.45)
@@ -283,7 +294,9 @@ function log_param_decision(gen_config, snapshot)
         "drift_delta"     => delta_temp,
         "final_temp"      => final_temp,
         "final_top_p"     => get(gen_config, "topP", 0.0),
-        "thinking_level"  => get(get(gen_config, "thinking_config", Dict()), "thinking_level", "none"),
+        "thinking"        => thinking_level === nothing ? string(thinking_budget === nothing ? "none" : "budget") : string("level"),
+        "thinking_level"  => thinking_level === nothing ? "none" : string(thinking_level),
+        "thinking_budget" => thinking_budget === nothing ? "none" : thinking_budget,
         "aperture_mode"   => string(get(aperture, "mode", "")),
         "drift_pressure"  => get(drift, "pressure", 0.0),
         "why_temp"        => "aperture_base=$(round(base_temp,digits=3)) + drift_delta=$(round(delta_temp,digits=3)) = $(round(final_temp,digits=3))",

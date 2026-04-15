@@ -1,6 +1,7 @@
 """
-SparkByte MCP Server — stdio transport, read-only, no source exposure.
+SparkByte MCP Server — stdio transport, read-only, local/dev bridge, no source exposure.
 Exposes live engine state, thoughts, forged tools, and Julian quarry to any MCP-compatible AI CLI.
+Not the paid surface; monetize A2A instead.
 """
 
 import sqlite3
@@ -57,7 +58,7 @@ Root: {ROOT}
 Entry: julia sparkbyte.jl | UI: http://127.0.0.1:8081
 
 # JulianMetaMorph (joined in monorepo)
-GitHub intelligence — quarry: {JULIAN_DB}
+GitHub intelligence — quarry: {JUL_DB}
 Entry: python -m julian_metamorph.cli | UI: http://127.0.0.1:8765
 """.strip()
 
@@ -139,23 +140,44 @@ def search_julian_quarry(query: str, limit: int = 10) -> str:
     Returns file hits with repo, path, language, license, score, and why.
     """
     limit = min(limit, 30)
-    rows = _jul("""
-        SELECT f.repo_full_name, f.file_path, f.language, f.license_spdx,
-               h.score, h.category, h.why, substr(h.symbols_json,1,200) as symbols
-        FROM hits h
-        JOIN files f ON h.file_id = f.id
-        WHERE h.why LIKE ? OR f.file_path LIKE ?
-        ORDER BY h.score DESC LIMIT ?
-    """, (f"%{query}%", f"%{query}%", limit))
-    if not rows:
-        # fallback: FTS on content
+    try:
         rows = _jul("""
-            SELECT f.repo_full_name, f.file_path, f.language, f.license_spdx,
-                   substr(f.content,1,300) as preview
-            FROM files f
-            WHERE f.content LIKE ?
-            ORDER BY f.id DESC LIMIT ?
-        """, (f"%{query}%", limit))
+            SELECT r.full_name AS repo_full_name,
+                   f.path AS file_path,
+                   f.language,
+                   r.license_spdx,
+                   bm25(files_fts) AS score,
+                   snippet(files_fts, 4, '', '', ' ... ', 20) AS preview,
+                   snippet(files_fts, 4, '', '', ' ... ', 20) AS why,
+                   substr(f.symbols_json, 1, 200) AS symbols,
+                   r.allowed AS allowed
+            FROM files_fts
+            JOIN files f ON f.id = files_fts.rowid
+            JOIN repos r ON r.full_name = f.repo_full_name
+            WHERE files_fts MATCH ?
+            ORDER BY score
+            LIMIT ?
+        """, (query, limit))
+        if not rows:
+            # Fallback for partial or older quarries without the FTS index.
+            rows = _jul("""
+                SELECT r.full_name AS repo_full_name,
+                       f.path AS file_path,
+                       f.language,
+                       r.license_spdx,
+                       0.0 AS score,
+                       substr(f.content, 1, 300) AS preview,
+                       substr(f.content, 1, 300) AS why,
+                       substr(f.symbols_json, 1, 200) AS symbols,
+                       r.allowed AS allowed
+                FROM files f
+                JOIN repos r ON r.full_name = f.repo_full_name
+                WHERE f.content LIKE ? OR f.path LIKE ?
+                ORDER BY f.updated_at DESC
+                LIMIT ?
+            """, (f"%{query}%", f"%{query}%", limit))
+    except sqlite3.OperationalError as exc:
+        rows = [{"error": f"Julian quarry search failed: {exc}"}]
     return json.dumps(rows, indent=2)
 
 @mcp.tool()
@@ -170,6 +192,29 @@ def get_knowledge(domain: str = "", limit: int = 20) -> str:
     else:
         rows = _sb("SELECT domain, topic, substr(content,1,200) as content, source FROM knowledge ORDER BY id DESC LIMIT ?", (limit,))
     return json.dumps(rows, indent=2)
+
+# ── Dynamic Persona Tools ──────────────────────────────────────────────────────
+def _register_persona_tools():
+    try:
+        personas = _sb("SELECT name, description FROM personas")
+        for p in personas:
+            p_name = p['name']
+            safe_name = f"ask_persona_{''.join(c if c.isalnum() else '_' for c in p_name.lower())}"
+            desc = f"Delegate a task to the {p_name} persona. {p.get('description', '')}"[:250]
+
+            def make_tool(persona_name):
+                def _delegate_to_persona(prompt: str) -> str:
+                    f"Send a prompt to {persona_name}."
+                    return f"Task dispatched to {persona_name}: {prompt}"
+                _delegate_to_persona.__name__ = safe_name
+                _delegate_to_persona.__doc__ = desc
+                return _delegate_to_persona
+
+            mcp.add_tool(make_tool(p_name), name=safe_name, description=desc)
+    except Exception as e:
+        print(f"Failed to load dynamic persona tools: {e}", file=sys.stderr)
+
+_register_persona_tools()
 
 # ── Entry ──────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":

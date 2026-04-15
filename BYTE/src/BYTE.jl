@@ -7,7 +7,9 @@ include("Schema.jl")
 include("Tools.jl")
 include("Telemetry.jl")
 
-export init, serve, launch, process_message
+export init, serve, launch, process_message,
+       get_current_model, set_current_model!, get_provider_for_model,
+       get_provider_profile, PROVIDER_PROFILES
 
 """
     init(db, browser_context)
@@ -34,14 +36,235 @@ function init(db::SQLite.DB, browser_context, project_root::String="")
 end
 
 # --- Session State ---
-global _current_model = "gemini-3.1-flash-lite-preview"
+global _current_model = "gemini-2.5-flash"
 global _current_gear  = "LITE_REASONING"
 global _active_modes  = ["SASS", "HUMAN", "BINDING"]
-const  _generation_abort = Ref(false)   # set true to break the agentic loop
+const _WS_RUNTIME_STATE = Dict{UInt64, Dict{Symbol,Any}}()
+const _WS_RUNTIME_STATE_LOCK = ReentrantLock()
 
 # Confirmation flag and pending store
 const REQUIRE_CONFIRM = Ref(false)  # UI can confirm tool runs, but keep opt-in until we want approval gates
 const _pending_confirms = Dict{String,Dict{String,Any}}()  # id => {fn, args}
+const _BACKEND_PROBE_LOCK = ReentrantLock()
+const _BACKEND_PROBE_CACHE = Ref(Dict{String,Any}())
+const _BACKEND_PROBE_CACHE_AT = Ref(0.0)
+const _BACKEND_PROBE_TTL_SEC = 90.0
+
+function _ws_client_id(ws)::UInt64
+    return UInt64(objectid(ws))
+end
+
+function _set_generation_abort!(ws, value::Bool=true)
+    cid = _ws_client_id(ws)
+    lock(_WS_RUNTIME_STATE_LOCK) do
+        state = get!(_WS_RUNTIME_STATE, cid) do
+            Dict{Symbol,Any}(
+                :abort => false,
+                :inflight => false,
+                :interrupt_notice_at => 0.0,
+            )
+        end
+        state[:abort] = value
+    end
+    return value
+end
+
+function _consume_generation_abort!(ws)::Bool
+    cid = _ws_client_id(ws)
+    lock(_WS_RUNTIME_STATE_LOCK) do
+        state = get(_WS_RUNTIME_STATE, cid, nothing)
+        state === nothing && return false
+        requested = Bool(get(state, :abort, false))
+        state[:abort] = false
+        return requested
+    end
+end
+
+function _set_turn_inflight!(ws, value::Bool)
+    cid = _ws_client_id(ws)
+    lock(_WS_RUNTIME_STATE_LOCK) do
+        state = get!(_WS_RUNTIME_STATE, cid) do
+            Dict{Symbol,Any}(
+                :abort => false,
+                :inflight => false,
+                :interrupt_notice_at => 0.0,
+            )
+        end
+        state[:inflight] = value
+    end
+    return value
+end
+
+function _turn_inflight(ws)::Bool
+    cid = _ws_client_id(ws)
+    lock(_WS_RUNTIME_STATE_LOCK) do
+        state = get(_WS_RUNTIME_STATE, cid, nothing)
+        state === nothing && return false
+        return Bool(get(state, :inflight, false))
+    end
+end
+
+function _interrupt_notice_allowed!(ws; cooldown_sec::Float64=0.8)::Bool
+    cid = _ws_client_id(ws)
+    now_ts = time()
+    lock(_WS_RUNTIME_STATE_LOCK) do
+        state = get!(_WS_RUNTIME_STATE, cid) do
+            Dict{Symbol,Any}(
+                :abort => false,
+                :inflight => false,
+                :interrupt_notice_at => 0.0,
+            )
+        end
+        last_ts = Float64(get(state, :interrupt_notice_at, 0.0))
+        if now_ts - last_ts >= cooldown_sec
+            state[:interrupt_notice_at] = now_ts
+            return true
+        end
+        return false
+    end
+end
+
+function _clear_ws_runtime_state!(ws)
+    cid = _ws_client_id(ws)
+    lock(_WS_RUNTIME_STATE_LOCK) do
+        delete!(_WS_RUNTIME_STATE, cid)
+    end
+    return
+end
+
+function _ollama_openai_endpoint()
+    explicit = strip(get(ENV, "OLLAMA_OPENAI_ENDPOINT", ""))
+    !isempty(explicit) && return explicit
+    base = rstrip(strip(get(ENV, "OLLAMA_BASE_URL", "http://localhost:11434")), '/')
+    return "$base/v1/chat/completions"
+end
+
+# ── Provider profiles — single source of truth for every LLM provider ─────────
+const PROVIDER_PROFILES = Dict{String,Dict{String,Any}}(
+    "gemini" => Dict(
+        "endpoint"        => "",
+        "env_key"         => "GEMINI_API_KEY",
+        "supports_tools"  => true,
+        "supports_top_p"  => true,
+        "supports_vision" => true,
+        "schema_format"   => "gemini",
+        "uses_gemini_api" => true,
+    ),
+    "xai" => Dict(
+        "endpoint"        => "https://api.x.ai/v1/chat/completions",
+        "env_key"         => "XAI_API_KEY",
+        "supports_tools"  => true,
+        "supports_top_p"  => true,
+        "supports_vision" => true,
+        "schema_format"   => "openai",
+        "uses_gemini_api" => false,
+    ),
+    "xai_responses" => Dict(
+        "endpoint"           => "https://api.x.ai/v1/responses",
+        "env_key"            => "XAI_API_KEY",
+        "supports_tools"     => true,
+        "supports_top_p"     => false,
+        "supports_vision"    => false,
+        "schema_format"      => "openai",
+        "uses_responses_api" => true,
+        "uses_gemini_api"    => false,
+    ),
+    "openai" => Dict(
+        "endpoint"        => "https://api.openai.com/v1/chat/completions",
+        "env_key"         => "OPENAI_API_KEY",
+        "supports_tools"  => true,
+        "supports_top_p"  => true,
+        "supports_vision" => true,
+        "schema_format"   => "openai",
+        "uses_gemini_api" => false,
+    ),
+    "cerebras" => Dict(
+        "endpoint"        => "https://api.cerebras.ai/v1/chat/completions",
+        "env_key"         => "CEREBRAS_API_KEY",
+        "supports_tools"  => true,
+        "supports_top_p"  => true,
+        "supports_vision" => false,
+        "schema_format"   => "openai",
+        "max_temp"        => 1.5,
+        "uses_gemini_api" => false,
+    ),
+    "ollama" => Dict(
+        "endpoint"        => _ollama_openai_endpoint(),
+        "env_key"         => "",
+        "supports_tools"  => true,
+        "supports_top_p"  => true,
+        "supports_vision" => true,
+        "schema_format"   => "openai",
+        "uses_gemini_api" => false,
+    ),
+    "azure" => Dict(
+        "endpoint"        => "",
+        "env_key"         => "AZURE_AI_API_KEY",
+        "supports_tools"  => true,
+        "supports_top_p"  => true,
+        "supports_vision" => true,
+        "schema_format"   => "openai",
+        "uses_gemini_api" => false,
+    ),
+    "openrouter" => Dict(
+        "endpoint"        => "https://openrouter.ai/api/v1/chat/completions",
+        "env_key"         => "OPENROUTER_API_KEY",
+        "supports_tools"  => true,
+        "supports_top_p"  => true,
+        "supports_vision" => true,
+        "schema_format"   => "openai",
+        "uses_gemini_api" => false,
+    ),
+)
+
+# ── Model → provider routing (module-level) ──────────────────────────────────
+const _XAI_RESPONSES_MODELS_SET = Set(["grok-4.20-multi-agent-0309", "grok-4.20-reasoning"])
+const _CEREBRAS_MODELS_SET = Set([
+    "llama-4-scout-17b-16e-instruct", "llama-4-maverick-17b-128e-instruct",
+    "llama3.3-70b", "llama3.1-70b", "llama3.1-8b",
+    "qwen-3-32b", "gpt-oss-120b", "gpt-oss-70b",
+    "qwen-3-235b-a22b-instruct-2507",
+])
+
+function get_provider_for_model(model::AbstractString)::String
+    m = String(model)
+    startswith(m, "azure:")                                                  && return "azure"
+    (startswith(m, "or:") || occursin("/", m) || startswith(m, "openrouter:")) && return "openrouter"
+    m in _XAI_RESPONSES_MODELS_SET                                           && return "xai_responses"
+    m in _CEREBRAS_MODELS_SET                                                && return "cerebras"
+    startswith(m, "grok-")                                                   && return "xai"
+    (startswith(m, "gpt-") || startswith(m, "o4-") || startswith(m, "o3-"))   && return "openai"
+    startswith(m, "ollama:")                                                  && return "ollama"
+    return "gemini"
+end
+
+function get_provider_profile(provider::AbstractString)::Dict{String,Any}
+    return get(PROVIDER_PROFILES, String(provider), Dict{String,Any}())
+end
+
+get_current_model()::String = _current_model
+
+function set_current_model!(model::AbstractString)
+    global _current_model = String(model)
+end
+
+function _gemini_thinking_config(model::AbstractString)
+    m = lowercase(strip(String(model)))
+    if startswith(m, "gemini-2.5")
+        budget = occursin("flash-lite", m) ? 0 : -1
+        return Dict{String,Any}("thinkingBudget" => budget)
+    elseif startswith(m, "gemini-3")
+        level = if occursin("flash-lite", m)
+            "minimal"
+        elseif occursin("flash", m)
+            "low"
+        else
+            "high"
+        end
+        return Dict{String,Any}("thinkingLevel" => level)
+    end
+    return Dict{String,Any}()
+end
 
 # ── Connected WebSocket clients — for broadcast (forge stream, etc.) ──────────
 const _WS_CLIENTS      = Dict{UInt64, Any}()   # objectid(ws) => ws
@@ -76,17 +299,277 @@ function _ws_send(ws, msg::String)
 end
 _ws_send(ws, d::Dict) = _ws_send(ws, JSON.json(d))
 
+function _abort_generation_if_requested!(ws; text::String="\n\n⊣ *Aborted.*")::Bool
+    if _consume_generation_abort!(ws)
+        _ws_send(ws, Dict("type"=>"spark", "text"=>text))
+        return true
+    end
+    return false
+end
+
+function _route_incoming_ws_message!(ws, raw_msg::String, inbox::Channel{String})
+    parsed = try
+        JSON.parse(raw_msg)
+    catch
+        nothing
+    end
+    msg_type = parsed isa AbstractDict ? string(get(parsed, "type", "")) : ""
+
+    if msg_type == "stop_generation"
+        log_ws_message_in(raw_msg)
+        if _turn_inflight(ws)
+            _set_generation_abort!(ws, true)
+            _ws_send(ws, Dict("type"=>"tool", "text"=>"⊣ Stop requested — cutting the current turn short."))
+        else
+            _ws_send(ws, Dict("type"=>"tool", "text"=>"⊣ Nothing is generating right now."))
+        end
+        return :handled
+    end
+
+    if msg_type == "user_msg" && _turn_inflight(ws)
+        _set_generation_abort!(ws, true)
+        put!(inbox, raw_msg)
+        if _interrupt_notice_allowed!(ws)
+            _ws_send(ws, Dict(
+                "type"=>"tool",
+                "text"=>"📨 Saw your new message — stopping the current turn so I can read it next."
+            ))
+        end
+        return :queued_interrupt
+    end
+
+    put!(inbox, raw_msg)
+    return :queued
+end
+
 function _project_path(root::String, relative_path::String)
     normalized = replace(strip(relative_path), "\\" => "/")
     parts = [part for part in split(normalized, "/") if !isempty(part) && part != "."]
     return isempty(parts) ? root : normpath(joinpath(root, parts...))
 end
 
-function _ollama_openai_endpoint()
-    explicit = strip(get(ENV, "OLLAMA_OPENAI_ENDPOINT", ""))
-    !isempty(explicit) && return explicit
-    base = rstrip(strip(get(ENV, "OLLAMA_BASE_URL", "http://localhost:11434")), '/')
-    return "$base/v1/chat/completions"
+function _probe_http_status(url::AbstractString;
+        method::String="GET",
+        headers::Vector{Pair{String,String}}=Pair{String,String}[],
+        body::AbstractString="")
+    try
+        resp = if uppercase(method) == "GET"
+            HTTP.get(url, headers; status_exception=false)
+        else
+            HTTP.request(uppercase(method), url, headers, body; status_exception=false)
+        end
+        return Int(resp.status), ""
+    catch e
+        return 0, first(_redact_sensitive_text(e), 200)
+    end
+end
+
+function _probe_reason(status::Int, err::AbstractString)
+    if status == 200
+        return "ok"
+    elseif status > 0
+        return "http_$status"
+    end
+    err_l = lowercase(err)
+    if occursin("connecterror", err_l) || occursin("econnrefused", err_l) || occursin("connection refused", err_l)
+        return "offline"
+    elseif occursin("timeout", err_l) || occursin("timed out", err_l)
+        return "timeout"
+    elseif isempty(err)
+        return "error"
+    end
+    return first(err, 90)
+end
+
+function _probe_backends_live()
+    providers = Dict{String,Any}()
+    models = Dict{String,Any}()
+
+    function set_provider(name::String; ok::Bool=false, status::Int=0, reason::String="unknown",
+            checked::Bool=false, has_key::Bool=false)
+        providers[name] = Dict(
+            "ok" => ok,
+            "status" => status,
+            "reason" => reason,
+            "checked" => checked,
+            "has_key" => has_key,
+        )
+    end
+
+    function set_model(name::String; ok::Bool=true, status::Int=200, reason::String="ok", provider::String="")
+        models[name] = Dict(
+            "ok" => ok,
+            "status" => status,
+            "reason" => reason,
+            "provider" => provider,
+        )
+    end
+
+    gemini_key = strip(get(ENV, "GEMINI_API_KEY", ""))
+    if isempty(gemini_key)
+        set_provider("gemini"; ok=false, reason="missing GEMINI_API_KEY", checked=false, has_key=false)
+    else
+        gemini_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$gemini_key"
+        gemini_payload = JSON.json(Dict("contents" => Any[Dict("parts" => Any[Dict("text" => "ping")])]))
+        st, err = _probe_http_status(gemini_url; method="POST",
+            headers=Pair{String,String}["Content-Type" => "application/json"],
+            body=gemini_payload)
+        set_provider("gemini"; ok=(st == 200), status=st, reason=_probe_reason(st, err), checked=true, has_key=true)
+
+        # Lite preview frequently rejects tool payloads; probe once so UI can gate it.
+        lite_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=$gemini_key"
+        lite_payload = JSON.json(Dict(
+            "contents" => Any[Dict("parts" => Any[Dict("text" => "ping")])],
+            "tools" => Any[Dict("function_declarations" => Any[Dict(
+                "name" => "noop",
+                "description" => "noop",
+                "parameters" => Dict("type" => "OBJECT", "properties" => Dict{String,Any}()),
+            )])],
+            "tool_config" => Dict("function_calling_config" => Dict("mode" => "AUTO")),
+        ))
+        st_lite, err_lite = _probe_http_status(lite_url; method="POST",
+            headers=Pair{String,String}["Content-Type" => "application/json"],
+            body=lite_payload)
+        set_model("gemini-3.1-flash-lite-preview"; ok=(st_lite == 200), status=st_lite,
+            reason=_probe_reason(st_lite, err_lite), provider="gemini")
+    end
+
+    xai_key = strip(get(ENV, "XAI_API_KEY", ""))
+    if isempty(xai_key)
+        set_provider("xai"; ok=false, reason="missing XAI_API_KEY", checked=false, has_key=false)
+    else
+        xai_headers = Pair{String,String}[
+            "Content-Type" => "application/json",
+            "Authorization" => "Bearer $xai_key",
+        ]
+        xai_payload = JSON.json(Dict(
+            "model" => "grok-3-mini",
+            "messages" => Any[Dict("role" => "user", "content" => "ping")],
+            "max_tokens" => 16,
+        ))
+        st, err = _probe_http_status("https://api.x.ai/v1/chat/completions"; method="POST",
+            headers=xai_headers, body=xai_payload)
+        set_provider("xai"; ok=(st == 200), status=st, reason=_probe_reason(st, err), checked=true, has_key=true)
+
+        # Multi-agent endpoint is often tool-gated on some accounts; detect and gate that model.
+        xai_multi_payload = JSON.json(Dict(
+            "model" => "grok-4.20-multi-agent-0309",
+            "stream" => false,
+            "input" => "ping",
+            "tools" => Any[Dict(
+                "type" => "function",
+                "name" => "noop",
+                "description" => "noop",
+                "parameters" => Dict("type" => "object", "properties" => Dict{String,Any}()),
+            )],
+            "tool_choice" => "auto",
+            "max_output_tokens" => 16,
+        ))
+        st_multi, err_multi = _probe_http_status("https://api.x.ai/v1/responses"; method="POST",
+            headers=xai_headers, body=xai_multi_payload)
+        set_model("grok-4.20-multi-agent-0309"; ok=(st_multi == 200), status=st_multi,
+            reason=_probe_reason(st_multi, err_multi), provider="xai")
+    end
+
+    openrouter_key = strip(get(ENV, "OPENROUTER_API_KEY", ""))
+    if isempty(openrouter_key)
+        set_provider("openrouter"; ok=false, reason="missing OPENROUTER_API_KEY", checked=false, has_key=false)
+    else
+        or_headers = Pair{String,String}[
+            "Content-Type" => "application/json",
+            "Authorization" => "Bearer $openrouter_key",
+        ]
+        or_payload = JSON.json(Dict(
+            "model" => "x-ai/grok-3-mini",
+            "messages" => Any[Dict("role" => "user", "content" => "ping")],
+            "max_tokens" => 16,
+        ))
+        st, err = _probe_http_status("https://openrouter.ai/api/v1/chat/completions"; method="POST",
+            headers=or_headers, body=or_payload)
+        set_provider("openrouter"; ok=(st == 200), status=st, reason=_probe_reason(st, err), checked=true, has_key=true)
+    end
+
+    cerebras_key = strip(get(ENV, "CEREBRAS_API_KEY", ""))
+    if isempty(cerebras_key)
+        set_provider("cerebras"; ok=false, reason="missing CEREBRAS_API_KEY", checked=false, has_key=false)
+    else
+        cerebras_headers = Pair{String,String}[
+            "Content-Type" => "application/json",
+            "Authorization" => "Bearer $cerebras_key",
+        ]
+        cerebras_payload = JSON.json(Dict(
+            "model" => "gpt-oss-120b",
+            "messages" => Any[Dict("role" => "user", "content" => "ping")],
+            "max_tokens" => 16,
+        ))
+        st, err = _probe_http_status("https://api.cerebras.ai/v1/chat/completions"; method="POST",
+            headers=cerebras_headers, body=cerebras_payload)
+        set_provider("cerebras"; ok=(st == 200), status=st, reason=_probe_reason(st, err), checked=true, has_key=true)
+
+        qwen_payload = JSON.json(Dict(
+            "model" => "qwen-3-32b",
+            "messages" => Any[Dict("role" => "user", "content" => "ping")],
+            "max_tokens" => 16,
+        ))
+        st_qwen, err_qwen = _probe_http_status("https://api.cerebras.ai/v1/chat/completions"; method="POST",
+            headers=cerebras_headers, body=qwen_payload)
+        set_model("qwen-3-32b"; ok=(st_qwen == 200), status=st_qwen,
+            reason=_probe_reason(st_qwen, err_qwen), provider="cerebras")
+    end
+
+    openai_key = strip(get(ENV, "OPENAI_API_KEY", ""))
+    if isempty(openai_key)
+        set_provider("openai"; ok=false, reason="missing OPENAI_API_KEY", checked=false, has_key=false)
+    else
+        openai_headers = Pair{String,String}[
+            "Content-Type" => "application/json",
+            "Authorization" => "Bearer $openai_key",
+        ]
+        openai_payload = JSON.json(Dict(
+            "model" => "gpt-4o-mini",
+            "messages" => Any[Dict("role" => "user", "content" => "ping")],
+            "max_tokens" => 16,
+        ))
+        st, err = _probe_http_status("https://api.openai.com/v1/chat/completions"; method="POST",
+            headers=openai_headers, body=openai_payload)
+        set_provider("openai"; ok=(st == 200), status=st, reason=_probe_reason(st, err), checked=true, has_key=true)
+    end
+
+    azure_key = strip(get(ENV, "AZURE_AI_API_KEY", ""))
+    azure_endpoint = rstrip(strip(get(ENV, "AZURE_OPENAI_ENDPOINT", "")), '/')
+    if isempty(azure_key) || isempty(azure_endpoint)
+        set_provider("azure"; ok=false, reason="missing AZURE_AI_API_KEY or AZURE_OPENAI_ENDPOINT",
+            checked=false, has_key=(!isempty(azure_key)))
+    else
+        azure_headers = Pair{String,String}["api-key" => azure_key]
+        azure_url = "$azure_endpoint/openai/deployments?api-version=2024-12-01-preview"
+        st, err = _probe_http_status(azure_url; method="GET", headers=azure_headers)
+        set_provider("azure"; ok=(st == 200), status=st, reason=_probe_reason(st, err), checked=true, has_key=true)
+    end
+
+    ollama_base = rstrip(strip(get(ENV, "OLLAMA_BASE_URL", "http://127.0.0.1:11434")), '/')
+    st_ollama, err_ollama = _probe_http_status("$ollama_base/api/tags"; method="GET")
+    set_provider("ollama"; ok=(st_ollama == 200), status=st_ollama,
+        reason=_probe_reason(st_ollama, err_ollama), checked=true, has_key=true)
+
+    return Dict(
+        "generated_at" => string(now()),
+        "providers" => providers,
+        "models" => models,
+    )
+end
+
+function _get_backend_probe(; force::Bool=false)
+    lock(_BACKEND_PROBE_LOCK) do
+        age = time() - _BACKEND_PROBE_CACHE_AT[]
+        if !force && !isempty(_BACKEND_PROBE_CACHE[]) && age < _BACKEND_PROBE_TTL_SEC
+            return deepcopy(_BACKEND_PROBE_CACHE[])
+        end
+        probe = _probe_backends_live()
+        _BACKEND_PROBE_CACHE[] = probe
+        _BACKEND_PROBE_CACHE_AT[] = time()
+        return deepcopy(probe)
+    end
 end
 
 # Send tool start + done messages to UI with result preview and elapsed time.
@@ -298,6 +781,16 @@ end
 Handle builder panel commands: list_tree, read_file, write_file, execute.
 """
 function _handle_builder_cmd(ws, p)
+    # SECURITY: Disable the file explorer if the server is bound to a public IP (e.g., Docker/Azure)
+    if get(ENV, "SPARKBYTE_HOST", "127.0.0.1") != "127.0.0.1" && get(ENV, "SPARKBYTE_FORCE_EXPLORER", "0") != "1"
+        cmd = get(p, "cmd", "")
+        _ws_send(ws, JSON.json(Dict("type"=>"builder_output", "output"=>"Access Denied: File explorer is disabled in public/cloud deployments for security.")))
+        if cmd == "list_tree"
+            _ws_send(ws, JSON.json(Dict("type"=>"builder_tree", "files"=>String[])))
+        end
+        return
+    end
+
     cmd  = get(p, "cmd", "")
     root = dirname(dirname(dirname(@__FILE__)))  # BYTE/src/ -> BYTE/ -> project root
 
@@ -433,6 +926,16 @@ function _handle_builder_cmd(ws, p)
         end
         _ws_send(ws, JSON.json(Dict("type"=>"personas_list", "personas"=>names)))
 
+    elseif cmd == "probe_backends"
+        force = Bool(get(p, "force", false))
+        probe = _get_backend_probe(force=force)
+        _ws_send(ws, JSON.json(Dict(
+            "type" => "backend_probe",
+            "generated_at" => get(probe, "generated_at", ""),
+            "providers" => get(probe, "providers", Dict{String,Any}()),
+            "models" => get(probe, "models", Dict{String,Any}()),
+        )))
+
     elseif cmd == "get_settings"
         env_keys = Dict(
             "GEMINI_API_KEY"   => "gemini",
@@ -493,6 +996,13 @@ function _handle_builder_cmd(ws, p)
                     v[1:min(4,length(v))] * "…" * v[max(1,length(v)-3):end])
         end
         _ws_send(ws, JSON.json(Dict("type"=>"settings_all_status", "keys"=>statuses)))
+        probe = _get_backend_probe(force=true)
+        _ws_send(ws, JSON.json(Dict(
+            "type" => "backend_probe",
+            "generated_at" => get(probe, "generated_at", ""),
+            "providers" => get(probe, "providers", Dict{String,Any}()),
+            "models" => get(probe, "models", Dict{String,Any}()),
+        )))
     end
 
     catch e
@@ -554,9 +1064,14 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
     # Model switch
     if p["type"] == "model_change"
         old = _current_model
-        _current_model = p["model"]
+        set_current_model!(p["model"])
         log_model_change(old, _current_model)
-        # No special chat‑only notice – we always attempt tool calls.
+        # Keep JLEngine Backends in sync with the new model
+        try
+            isdefined(Main, :JLEngine) && Main.JLEngine.sync_from_byte!()
+        catch e
+            @warn "sync_from_byte! failed after model_change" exception=(e, catch_backtrace())
+        end
         notice = "Switched to $(_current_model) 🔧"
         out = Dict("type"=>"tool", "text"=>notice)
         _ws_send(ws, JSON.json(out)); log_ws_message_out(out)
@@ -565,8 +1080,12 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
 
     # --- Stop / abort in‑progress generation ---
     if p["type"] == "stop_generation"
-        _generation_abort[] = true
-        _ws_send(ws, JSON.json(Dict("type"=>"tool", "text"=>"⊣ Generation stopped.")))
+        if _turn_inflight(ws)
+            _set_generation_abort!(ws, true)
+            _ws_send(ws, Dict("type"=>"tool", "text"=>"⊣ Stop requested — cutting the current turn short."))
+        else
+            _ws_send(ws, Dict("type"=>"tool", "text"=>"⊣ Nothing is generating right now."))
+        end
         return
     end
 
@@ -635,7 +1154,28 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                 end
             end
             sleep(0.5)
-            exit(0)
+            # Manual cleanup BEFORE exit, then bypass Julia's atexit entirely.
+            # Julia's atexit runs on-demand compilation → GC walks Python refs → segfault.
+            # We do the two things that matter (DB session close, Python browser close)
+            # and then call the OS exit directly via ccall — no Julia atexit, no crash.
+            try
+                _db_end_session(_session_id)
+            catch e
+                @warn "Failed to close DB session during server relaunch" exception=(e, catch_backtrace())
+            end
+            try
+                if isdefined(Main, :JLEngine) && isdefined(Main.JLEngine, :shutdown_cleanly!)
+                    Main.JLEngine.shutdown_cleanly!()
+                end
+            catch e
+                @warn "Failed to run clean shutdown during server relaunch" exception=(e, catch_backtrace())
+            end
+            # Bypass Julia's atexit hook by calling Windows ExitProcess / POSIX _exit directly.
+            if Sys.iswindows()
+                ccall((:ExitProcess, "kernel32"), Cvoid, (UInt32,), 0)
+            else
+                ccall(:_exit, Cvoid, (Cint,), 0)
+            end
         end
         return
     end
@@ -675,8 +1215,9 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                 pname = get(result, "persona_name", "Unknown")
                 _ws_send(ws, JSON.json(Dict("type"=>"spark",
                     "text"=>"🃏 **$(pname)** is ready! Use **/gear $(pname)** to activate her.")))
-                # Refresh persona list so new card shows up in the dropdown
-                _handle_builder_cmd(ws, Dict("type"=>"builder_cmd", "cmd"=>"list_personas"))
+                # Refresh persona list so new card shows up in the dropdown.
+                # Keep this as an internal reuse call, not a fake WS envelope.
+                _handle_builder_cmd(ws, Dict("cmd"=>"list_personas"))
             end
         catch e
             bt = sprint(showerror, e, catch_backtrace())
@@ -719,6 +1260,8 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
     end
 
     turn_start_ms = round(Int, datetime2unix(now()) * 1000)
+    _set_generation_abort!(ws, false)
+    _ws_send(ws, Dict("type"=>"generation_started"))
 
     # Build user turn
     parts_list = Any[]
@@ -727,7 +1270,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
     push!(history, Dict("role"=>"user", "parts"=>parts_list))
 
     # --- JL Engine cognitive snapshot (once per turn) ---
-    snapshot = Main.JLEngine.analyze_turn!(engine, txt; persona_name=engine.current_persona_name)
+    snapshot = Main.JLEngine.analyze_turn!(engine, txt; image=img, mime=mime, persona_name=engine.current_persona_name)
     log_engine_snapshot(snapshot)
 
     _current_gear  = snapshot["gait"]
@@ -748,98 +1291,109 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
         "ADVISORY: $(get(snapshot["advisory"], "msg", "None"))" *
         "\n\n" * _build_self_context(engine)
 
-    # ── Provider profiles ───────────────────────────────────────────────────
-    # Single source of truth for every provider's capabilities and wire‑up.
-    # Add a new provider here — nowhere else.
-    PROVIDER_PROFILES = Dict{String,Dict{String,Any}}(
-        "gemini" => Dict(
-            "endpoint"        => "",                          # built dynamically per model
-            "env_key"         => "GEMINI_API_KEY",
-            "supports_tools"  => true,
-            "supports_top_p"  => true,
-            "supports_vision" => true,
-            "schema_format"   => "gemini",                   # UPPERCASE types, function_declarations wrapper
-            "uses_gemini_api" => true,
-        ),
-        "xai" => Dict(
-            "endpoint"        => "https://api.x.ai/v1/chat/completions",
-            "env_key"         => "XAI_API_KEY",
-            "supports_tools"  => true,
-            "supports_top_p"  => true,
-            "supports_vision" => false,
-            "schema_format"   => "openai",
-            "uses_gemini_api" => false,
-        ),
-        "xai_responses" => Dict(
-            "endpoint"           => "https://api.x.ai/v1/responses",
-            "env_key"            => "XAI_API_KEY",
-            "supports_tools"     => true,
-            "supports_top_p"     => false,
-            "supports_vision"    => false,
-            "schema_format"      => "openai",
-            "uses_responses_api" => true,
-            "uses_gemini_api"    => false,
-        ),
-        "openai" => Dict(
-            "endpoint"        => "https://api.openai.com/v1/chat/completions",
-            "env_key"         => "OPENAI_API_KEY",
-            "supports_tools"  => true,
-            "supports_top_p"  => true,
-            "supports_vision" => true,
-            "schema_format"   => "openai",
-            "uses_gemini_api" => false,
-        ),
-        "cerebras" => Dict(
-            "endpoint"        => "https://api.cerebras.ai/v1/chat/completions",
-            "env_key"         => "CEREBRAS_API_KEY",
-            "supports_tools"  => true,
-            "supports_top_p"  => false,                      # Cerebras rejects top_p
-            "supports_vision" => false,
-            "schema_format"   => "openai",
-            "max_temp"        => 1.5,
-            "uses_gemini_api" => false,
-        ),
-        "ollama" => Dict(
-            "endpoint"        => _ollama_openai_endpoint(),
-            "env_key"         => "",                          # no key needed
-            "supports_tools"  => true,
-            "supports_top_p"  => true,
-            "supports_vision" => false,
-            "schema_format"   => "openai",
-            "uses_gemini_api" => false,
-        ),
-        "azure" => Dict(
-            "endpoint"        => "",                          # built dynamically per deployment
-            "env_key"         => "AZURE_AI_API_KEY",
-            "supports_tools"  => true,
-            "supports_top_p"  => true,
-            "supports_vision" => false,
-            "schema_format"   => "openai",
-            "uses_gemini_api" => false,
-        ),
-    )
-
-    # ── Model → provider routing ──────────────────────────────────────────────
-    # Explicit model lists win. Prefix matching is the fallback.
-    # Azure deployments use "azure:" prefix e.g. "azure:grok-4-20-reasoning"
-    _XAI_RESPONSES_MODELS = ["grok-4.20-multi-agent-0309", "grok-4.20-reasoning"]
-    _XAI_RESPONSES_NO_TOOL_MODELS = Set(["grok-4.20-multi-agent-0309"])
-    # Gemma models don't support function calling or thinking_config — strip both
-    _GEMMA_MODELS = Set(["gemma-3-1b-it","gemma-3-4b-it","gemma-3-12b-it","gemma-3-27b-it",
-                          "gemma-3n-e2b-it","gemma-3n-e4b-it","gemma-4-26b-a4b-it","gemma-4-31b-it"])
-    _CEREBRAS_MODELS = [
-        "llama-4-scout-17b-16e-instruct", "llama-4-maverick-17b-128e-instruct",
-        "llama3.3-70b", "llama3.1-70b", "llama3.1-8b",
-        "qwen-3-32b", "gpt-oss-120b", "gpt-oss-70b",
-    ]
-    provider = if startswith(_current_model, "azure:");      "azure"
-    elseif _current_model in _XAI_RESPONSES_MODELS;         "xai_responses"
-    elseif _current_model in _CEREBRAS_MODELS;              "cerebras"
-    elseif startswith(_current_model, "grok-");             "xai"
-    elseif startswith(_current_model, "gpt-") || startswith(_current_model, "o4-") || startswith(_current_model, "o3-"); "openai"
-    elseif startswith(_current_model, "ollama:");           "ollama"
-    else;                                                   "gemini"
+    # ── Provider profiles & routing ─────────────────────────────────────────
+    _xai_no_tool_raw = strip(get(ENV, "XAI_RESPONSES_NO_TOOL_MODELS", ""))
+    _XAI_RESPONSES_NO_TOOL_MODELS = isempty(_xai_no_tool_raw) ?
+        Set{String}() :
+        Set([strip(s) for s in split(_xai_no_tool_raw, ",") if !isempty(strip(s))])
+    _provider_from_model   = get_provider_for_model
+    _provider_ready_for_model = function(model::String)
+        prov = get_provider_for_model(model)
+        prof = get_provider_profile(prov)
+        ek   = get(prof, "env_key", "")
+        if isempty(ek)
+            return prov == "ollama"
+        end
+        ready = !isempty(strip(get(ENV, ek, "")))
+        if prov == "azure"
+            ready = ready && !isempty(strip(get(ENV, "AZURE_OPENAI_ENDPOINT", "")))
+        end
+        return ready
     end
+    _pick_available_model = function(candidates::Vector{String};
+            fallback::String="gemini-2.5-flash")
+        for candidate in candidates
+            _provider_ready_for_model(candidate) && return candidate
+        end
+        return _provider_ready_for_model(fallback) ? fallback : first(candidates)
+    end
+    # ── Auto-router: pick best model for the task ─────────────────────────────
+    # Triggered when model is set to "auto". Reads message content and routes
+    # to the best available model among configured providers. Character/persona system is unaffected
+    # — it wraps above this layer regardless of which model gets picked.
+    _routed_model = _current_model
+    if _current_model == "auto"
+        last_user_msg = ""
+        for m in reverse(history)
+            if get(m, "role", "") == "user"
+                parts = get(m, "parts", [get(m, "content", "")])
+                last_user_msg = lowercase(string(isa(parts, Vector) ? get(first(parts), "text", "") : parts))
+                break
+            end
+        end
+        _routed_model = if occursin(r"reason|think step|prove|math|logic|deduce|analyze|why does|explain how", last_user_msg)
+            _pick_available_model([
+                "x-ai/grok-3-mini",
+                "grok-3-mini",
+                "gemini-2.5-pro",
+                "gpt-4.1",
+                "gpt-oss-120b",
+                "ollama:qwen3",
+            ]; fallback="gemini-2.5-flash")
+        elseif occursin(r"code|function|bug|debug|script|implement|refactor|class|def |```", last_user_msg)
+            _pick_available_model([
+                "anthropic/claude-sonnet-4-5",
+                "grok-3-mini",
+                "gemini-2.5-flash",
+                "gpt-4.1",
+                "gpt-oss-120b",
+                "ollama:qwen3",
+            ]; fallback="gemini-2.5-flash")
+        elseif occursin(r"image|picture|photo|screenshot|look at|describe this", last_user_msg)
+            _pick_available_model([
+                "google/gemini-2.0-flash-001",
+                "gemini-2.5-flash",
+                "gpt-4o",
+            ]; fallback="gemini-2.5-flash")
+        elseif length(last_user_msg) > 3000
+            _pick_available_model([
+                "google/gemini-2.5-pro-preview-03-25",
+                "gemini-2.5-pro",
+                "grok-3",
+                "gpt-4.1",
+            ]; fallback="gemini-2.5-flash")
+        else
+            _pick_available_model([
+                "x-ai/grok-3-fast",
+                "grok-3-fast",
+                "gemini-2.5-flash",
+                "gpt-4o-mini",
+                "gpt-oss-120b",
+                "ollama:llama3.3",
+            ]; fallback="gemini-2.5-flash")
+        end
+        @info "🧭 Auto-router → $_routed_model"
+    end
+
+    provider = _provider_from_model(_routed_model)
+
+    # Use routed model name (strip openrouter: prefix if present)
+    _effective_model = startswith(_routed_model, "openrouter:") ? _routed_model[12:end] : _routed_model
+
+    model_gating_enabled = lowercase(strip(get(ENV, "BYTE_ENABLE_MODEL_GATING", "false"))) in ("1", "true", "yes", "on")
+    # Optional safety route for known provider/account tool restrictions.
+    # Disabled by default so requested models run directly unless env enables gating.
+    if model_gating_enabled && !chat_mode && provider == "xai_responses" && (_effective_model in _XAI_RESPONSES_NO_TOOL_MODELS)
+        xai_tool_model = strip(get(ENV, "XAI_TOOL_FALLBACK_MODEL", "grok-3-mini"))
+        isempty(xai_tool_model) && (xai_tool_model = "grok-3-mini")
+        provider = "xai"
+        _effective_model = xai_tool_model
+        _ws_send(ws, JSON.json(Dict(
+            "type" => "tool",
+            "text" => "ℹ️ Optional model gating rerouted $_routed_model to $xai_tool_model (set BYTE_ENABLE_MODEL_GATING=false to disable)."
+        )))
+    end
+
     pp = PROVIDER_PROFILES[provider]
 
     # ── Params ───────────────────────────────────────────────────────────────
@@ -851,28 +1405,8 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
     safety = [Dict("category"=>"HARM_CATEGORY_$c", "threshold"=>"BLOCK_NONE")
               for c in ["HATE_SPEECH","HARASSMENT","DANGEROUS_CONTENT","SEXUALLY_EXPLICIT","CIVIC_INTEGRITY"]]
     gen_config = Dict{String,Any}("temperature"=>temp, "topP"=>top_p)
-    # thinking_config only on models that actually support it (2.5+, 3.x) — never Gemma or 2.0
-    _supports_thinking = !(_current_model in _GEMMA_MODELS) && (
-        occursin("2.5", _current_model) ||
-        occursin("thinking", lowercase(_current_model)) ||
-        match(r"gemini-3", _current_model) !== nothing
-    )
-    if _supports_thinking
-        _is_flash_lite = occursin("flash-lite", lowercase(_current_model))
-        _is_flash      = occursin("flash", lowercase(_current_model)) && !_is_flash_lite
-        if _is_flash_lite
-            gen_config["thinking_config"] = Dict("thinking_level"=>"LOW")
-        elseif _is_flash
-            gen_config["thinking_config"] = Dict("thinking_level"=>"MEDIUM")
-        else
-            gen_config["thinking_config"] = Dict("thinking_level"=>"HIGH")
-        end
-    end
-    # Gemma → force chat mode (no tools)
-    if _current_model in _GEMMA_MODELS
-        chat_mode = true
-    end
-
+    thinking_cfg = _gemini_thinking_config(_current_model)
+    !isempty(thinking_cfg) && (gen_config["thinking_config"] = thinking_cfg)
     log_system_prompt(sys_prompt, snapshot)
     log_param_decision(gen_config, snapshot)
 
@@ -1014,11 +1548,8 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
             "content"=> has_cur_img ? cur_blocks : txt))
     end
 
-    _generation_abort[] = false   # reset at start of every new turn
     while true
-        if _generation_abort[]
-            _generation_abort[] = false
-            _ws_send(ws, JSON.json(Dict("type"=>"spark", "text"=>"\n\n⊣ *Aborted.*")))
+        if _abort_generation_if_requested!(ws)
             break
         end
         loop_iter += 1
@@ -1027,17 +1558,82 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
         if provider == "gemini"
             # ── Gemini path ──────────────────────────────────────────────────
             api_key = get(ENV, "GEMINI_API_KEY", "")
-            api_url = "https://generativelanguage.googleapis.com/v1beta/models/$(_current_model):generateContent?key=$api_key"
-            payload = if chat_mode
-                Dict("system_instruction"=>Dict("parts"=>[Dict("text"=>sys_prompt)]),
-                     "contents"=>history, "safetySettings"=>safety, "generation_config"=>gen_config)
-            else
-                Dict("system_instruction"=>Dict("parts"=>[Dict("text"=>sys_prompt)]),
-                     "contents"=>history, "safetySettings"=>safety, "generation_config"=>gen_config,
-                     "tools"=>[Dict("function_declarations"=>all_decls_raw)])
+            gemini_model_in_use = _current_model
+            api_url = "https://generativelanguage.googleapis.com/v1beta/models/$gemini_model_in_use:generateContent?key=$api_key"
+            function _gemini_payload(; include_tools::Bool, include_thinking::Bool)
+                cfg = deepcopy(gen_config)
+                if !include_thinking && haskey(cfg, "thinking_config")
+                    delete!(cfg, "thinking_config")
+                end
+                payload = Dict(
+                    "system_instruction" => Dict("parts" => [Dict("text" => sys_prompt)]),
+                    "contents" => history,
+                    "safetySettings" => safety,
+                    "generation_config" => cfg,
+                )
+                if include_tools
+                    payload["tools"] = [Dict("function_declarations" => all_decls_raw)]
+                end
+                return payload
             end
-            resp = HTTP.post(api_url, ["Content-Type"=>"application/json"], JSON.json(payload))
-            data = JSON.parse(String(resp.body))
+
+            payload = _gemini_payload(include_tools=!chat_mode, include_thinking=true)
+            resp = HTTP.post(api_url, ["Content-Type"=>"application/json"], JSON.json(payload); status_exception=false)
+            data = try
+                JSON.parse(String(resp.body))
+            catch
+                Dict("error" => Dict("message" => first(String(resp.body), 500)))
+            end
+            _abort_generation_if_requested!(ws) && break
+
+            if resp.status >= 400 && !chat_mode
+                warn_text = string(get(get(data, "error", Dict{String,Any}()), "message", "Gemini rejected tool/thinking payload."))
+                gemini_tool_model = strip(get(ENV, "GEMINI_TOOL_FALLBACK_MODEL", "gemini-2.5-flash"))
+                isempty(gemini_tool_model) && (gemini_tool_model = gemini_model_in_use)
+
+                retry_model = gemini_tool_model
+                retry_url = "https://generativelanguage.googleapis.com/v1beta/models/$retry_model:generateContent?key=$api_key"
+                retry_note = retry_model == gemini_model_in_use ?
+                    "retrying $gemini_model_in_use without thinking config" :
+                    "retrying on $retry_model without thinking config"
+                _ws_send(ws, JSON.json(Dict(
+                    "type" => "tool",
+                    "text" => "ℹ️ Gemini rejected tool-mode payload ($gemini_model_in_use); $retry_note."
+                )))
+                tool_payload = _gemini_payload(include_tools=true, include_thinking=false)
+                tool_resp = HTTP.post(retry_url, ["Content-Type"=>"application/json"], JSON.json(tool_payload); status_exception=false)
+                tool_data = try
+                    JSON.parse(String(tool_resp.body))
+                catch
+                    Dict("error" => Dict("message" => first(String(tool_resp.body), 500)))
+                end
+                if tool_resp.status < 400
+                    resp = tool_resp
+                    data = tool_data
+                    gemini_model_in_use = retry_model
+                    _ws_send(ws, JSON.json(Dict(
+                        "type" => "tool",
+                        "text" => "✅ Gemini tool fallback succeeded ($retry_model)."
+                    )))
+                end
+
+                if resp.status >= 400
+                    retry_err_text = string(get(get(data, "error", Dict{String,Any}()), "message", warn_text))
+                    err_msg = "ERROR: Gemini request failed for model $gemini_model_in_use (tool-mode retry exhausted). " *
+                              retry_err_text
+                    _ws_send(ws, JSON.json(Dict("type"=>"spark","text"=>first(err_msg, 800))))
+                    log_api_response(_current_model, resp.status, length(resp.body), loop_iter; error=err_msg)
+                    break
+                end
+            elseif resp.status >= 400
+                primary_err_text = string(get(get(data, "error", Dict{String,Any}()), "message", "unknown error"))
+                err_msg = "ERROR: Gemini request failed for model $gemini_model_in_use. " *
+                          primary_err_text
+                _ws_send(ws, JSON.json(Dict("type"=>"spark","text"=>first(err_msg, 800))))
+                log_api_response(_current_model, resp.status, length(resp.body), loop_iter; error=err_msg)
+                break
+            end
+
             log_token_usage(get(data, "usageMetadata", nothing), loop_iter)
             cand = (haskey(data,"candidates") && !isempty(data["candidates"])) ? data["candidates"][1] : nothing
             if cand !== nothing; log_safety_ratings(get(cand,"safetyRatings",[]), loop_iter); end
@@ -1046,6 +1642,10 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                 push!(history, m)
                 has_tool = false
                 for part in m["parts"]
+                    if _abort_generation_if_requested!(ws)
+                        has_tool = false
+                        break
+                    end
                     if haskey(part,"thought") && part["thought"] == true
                         raw_thinking = get(part,"text","")
                         log_thinking(raw_thinking, loop_iter)
@@ -1062,6 +1662,10 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                         log_api_response(_current_model, resp.status, length(resp.body), loop_iter;
                             has_text=true, text_preview=part["text"], finish_reason=string(finish_reason))
                     elseif haskey(part,"functionCall")
+                        if _abort_generation_if_requested!(ws)
+                            has_tool = false
+                            break
+                        end
                         has_tool = true; c = part["functionCall"]; args = get(c,"args",Dict())
                         println("⚡ BYTE tool: $(c["name"])")
                         # Confirmation step
@@ -1073,8 +1677,16 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                             # Skip actual execution now – will resume on confirm_response
                             continue
                         end
+                        if _abort_generation_if_requested!(ws)
+                            has_tool = false
+                            break
+                        end
                         res, elapsed = _execute_tool_call(ws, engine, c["name"], args; loop_iter=loop_iter)
                         last_tool_name_used = c["name"]; last_tool_elapsed_used = elapsed
+                        if _abort_generation_if_requested!(ws)
+                            has_tool = false
+                            break
+                        end
                         # Append tool result with the EXACT same tc_id — this is the roundtrip
                         push!(history, Dict("role"=>"function","parts"=>[Dict(
                             "functionResponse"=>Dict("name"=>c["name"],"response"=>Dict("content"=>res)))]))
@@ -1131,10 +1743,10 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                 # xAI Responses API tool format: flat — name/description/parameters at top level
                 # NOT nested under "function" like OAI chat/completions
                 xai_tools_enabled = !chat_mode
-                if xai_tools_enabled && (_current_model in _XAI_RESPONSES_NO_TOOL_MODELS)
+                if model_gating_enabled && xai_tools_enabled && (_effective_model in _XAI_RESPONSES_NO_TOOL_MODELS)
                     xai_tools_enabled = false
                     warn = Dict("type"=>"tool",
-                        "text"=>"ℹ xAI tool calls are gated for $_current_model on this account; falling back to chat-only mode.")
+                        "text"=>"ℹ Optional model gating blocked tool calls for $_effective_model (set BYTE_ENABLE_MODEL_GATING=false to disable).")
                     _ws_send(ws, JSON.json(warn)); log_ws_message_out(warn)
                 end
 
@@ -1146,7 +1758,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                 ) for d in all_decls_raw] : Any[]
 
                 payload = Dict{String,Any}(
-                    "model"        => _current_model,
+                    "model"        => _effective_model,
                     "stream"       => false,
                     "instructions" => sys_prompt,
                     "input"        => input_msgs,
@@ -1159,6 +1771,17 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                 headers = ["Content-Type"=>"application/json", "Authorization"=>"Bearer $api_key"]
                 resp = HTTP.post("https://api.x.ai/v1/responses", headers, JSON.json(payload))
                 data = JSON.parse(String(resp.body))
+                _abort_generation_if_requested!(ws) && break
+
+                if resp.status >= 400
+                    err_obj = get(data, "error", Dict{String,Any}())
+                    err_msg = string(get(err_obj, "message", "xAI Responses API request failed"))
+                    warn = Dict("type"=>"tool",
+                        "text"=>"⚠ xAI Responses API error ($(_effective_model), status $(resp.status)): " * first(err_msg, 220))
+                    _ws_send(ws, JSON.json(warn)); log_ws_message_out(warn)
+                    log_api_response(_current_model, resp.status, length(resp.body), loop_iter; error=err_msg)
+                    break
+                end
 
                 # Capture reasoning if present
                 rsn_obj = get(data, "reasoning", nothing)
@@ -1194,6 +1817,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
 
                 # Stream any text reply to UI
                 if !isempty(reply_text)
+                    _abort_generation_if_requested!(ws) && break
                     final_reply *= reply_text
                     push!(history, Dict("role"=>"model","parts"=>[Dict("text"=>reply_text)]))
                     out = Dict("type"=>"spark","text"=>reply_text)
@@ -1216,6 +1840,10 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
 
                 # Execute each tool and append results
                 for tc in xai_tool_calls
+                    if _abort_generation_if_requested!(ws)
+                        xai_tool_calls = Any[]
+                        break
+                    end
                     fn_name = get(tc,"name","")
                     call_id = get(tc,"call_id","")
                     args_raw = get(tc,"arguments","{}")
@@ -1224,11 +1852,19 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                     if REQUIRE_CONFIRM[]
                         cid = string(uuid4())
                         _pending_confirms[cid] = Dict("fn"=>fn_name, "args"=>args_parsed)
-                        _ws_send(ws, JSON.json(Dict("type"=>"confirm","id"=>cid,
-                            "text"=>"⚠️ Run tool **$fn_name** with args $(JSON.json(args_parsed))?")))
-                        continue
-                    end
+                            _ws_send(ws, JSON.json(Dict("type"=>"confirm","id"=>cid,
+                                "text"=>"⚠️ Run tool **$fn_name** with args $(JSON.json(args_parsed))?")))
+                            continue
+                        end
+                        if _abort_generation_if_requested!(ws)
+                            xai_tool_calls = Any[]
+                            break
+                        end
                     result_dict, _elapsed_xai = _execute_tool_call(ws, engine, fn_name, args_parsed; loop_iter=loop_iter)
+                    if _abort_generation_if_requested!(ws)
+                        xai_tool_calls = Any[]
+                        break
+                    end
                     result_str = JSON.json(result_dict)
                     push!(input_msgs, Dict(
                         "type"    => "function_call_output",
@@ -1236,6 +1872,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                         "output"  => result_str,
                     ))
                 end
+                isempty(xai_tool_calls) && break
                 # Loop again with tool results in input_msgs
 
             else
@@ -1251,9 +1888,9 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                 _ws_send(ws, JSON.json(Dict("type"=>"spark","text"=>wrn))); break
             end
 
-            actual_model = if provider == "ollama";  replace(_current_model, "ollama:"=>"")
-                           elseif provider == "azure"; replace(_current_model, "azure:"=>"")
-                           else; _current_model
+            actual_model = if provider == "ollama";       replace(_effective_model, "ollama:"=>"")
+                           elseif provider == "azure";  replace(_effective_model, "azure:"=>"")
+                           else; _effective_model
                            end
 
             # Azure: build per-deployment endpoint from AZURE_OPENAI_ENDPOINT env var
@@ -1273,11 +1910,13 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
             # gpt‑oss models on Cerebras support reasoning_effort
             if provider == "cerebras" && startswith(_current_model, "gpt-oss")
                 payload["reasoning_effort"] = "medium"
+                payload["max_completion_tokens"] = 32768
             end
 
             headers = ["Content-Type"=>"application/json", "Authorization"=>"Bearer $api_key"]
             resp = HTTP.post(api_url, headers, JSON.json(payload))
             data = JSON.parse(String(resp.body))
+            _abort_generation_if_requested!(ws) && break
 
             if !haskey(data,"choices") || isempty(data["choices"])
                 err_msg = "ERROR: No response from $provider. $(get(data,"error",Dict{String,Any}()))"
@@ -1298,6 +1937,10 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                 push!(oai_messages, msg)
 
                 for tc in msg["tool_calls"]
+                    if _abort_generation_if_requested!(ws)
+                        has_tool = false
+                        break
+                    end
                     fn      = tc["function"]
                     tc_id   = get(tc,"id","call_$(fn["name"])")   # exact id from OAI response
                     tc_name = fn["name"]
@@ -1307,16 +1950,25 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                     if REQUIRE_CONFIRM[]
                         cid = string(uuid4())
                         _pending_confirms[cid] = Dict("fn"=>tc_name, "args"=>tc_args)
-                        _ws_send(ws, JSON.json(Dict("type"=>"confirm","id"=>cid,
-                            "text"=>"⚠️ Run tool **$tc_name** with args $(JSON.json(tc_args))?")))
-                        continue
-                    end
+                            _ws_send(ws, JSON.json(Dict("type"=>"confirm","id"=>cid,
+                                "text"=>"⚠️ Run tool **$tc_name** with args $(JSON.json(tc_args))?")))
+                            continue
+                        end
+                        if _abort_generation_if_requested!(ws)
+                            has_tool = false
+                            break
+                        end
                     res, elapsed = _execute_tool_call(ws, engine, tc_name, tc_args; loop_iter=loop_iter)
                     last_tool_name_used = tc_name; last_tool_elapsed_used = elapsed
+                    if _abort_generation_if_requested!(ws)
+                        has_tool = false
+                        break
+                    end
                     # Append tool result with the EXACT same tc_id — this is the roundtrip
                     push!(oai_messages, Dict("role"=>"tool","tool_call_id"=>tc_id,"content"=>JSON.json(res)))
                 end
             elseif haskey(msg,"content") && !isnothing(msg["content"])
+                _abort_generation_if_requested!(ws) && break
                 txt = string(msg["content"])
                 final_reply *= txt
                 push!(history, Dict("role"=>"model","parts"=>[Dict("text"=>txt)]))
@@ -1415,12 +2067,21 @@ function launch(port::Int=8081)
     run(cmd)
 end
 
+function _write_http_response(stream, resp::HTTP.Response)
+    HTTP.setstatus(stream, resp.status)
+    for header in resp.headers
+        HTTP.setheader(stream, String(header[1]) => String(header[2]))
+    end
+    HTTP.startwrite(stream)
+    write(stream, resp.body)
+end
+
 """
-    serve(engine; host="127.0.0.1", port=8081)
+    serve(engine; host="127.0.0.1", port=8081, extra_http_handler=nothing)
 
 Start the HTTP + WebSocket server. Blocks forever.
 """
-function serve(engine; host::String="127.0.0.1", port::Int=8081)
+function serve(engine; host::String="127.0.0.1", port::Int=8081, extra_http_handler=nothing)
     println("⚡ BYTE serving on $host:$port")
     log_event("server_start", Dict{String,Any}("host"=>host, "port"=>port))
     _db_start_session(_session_id)
@@ -1431,52 +2092,105 @@ function serve(engine; host::String="127.0.0.1", port::Int=8081)
                 lock(_WS_CLIENTS_LOCK) do; _WS_CLIENTS[cid] = ws; end
                 log_event("ws_connect", Dict{String,Any}())
                 history = Any[]
-                for msg in ws
-                    try
-                        process_message(ws, String(msg), history, engine)
-                    catch e
-                        bt = sprint(showerror, e, catch_backtrace())
-                        @warn "WS message error" exception=bt
-                        log_error("ws_loop", e; stacktrace_str=bt)
-                        # Forward a concise error to the UI instead of silently dropping
+                inbox = Channel{String}(64)
+                worker = @async begin
+                    for raw_msg in inbox
+                        _set_turn_inflight!(ws, true)
                         try
-                            _ws_send(ws, JSON.json(Dict(
-                                "type"=>"builder_output",
-                                "output"=>"⚠ Server error: $(first(string(e),200))")))
-                        catch send_err
-                            @warn "Failed to forward WS loop error to UI" exception=(send_err, catch_backtrace())
+                            process_message(ws, raw_msg, history, engine)
+                        catch e
+                            bt = sprint(showerror, e, catch_backtrace())
+                            @warn "WS message error" exception=bt
+                            log_error("ws_loop", e; stacktrace_str=bt)
+                            # Forward a concise error to the UI instead of silently dropping
+                            try
+                                _ws_send(ws, JSON.json(Dict(
+                                    "type"=>"builder_output",
+                                    "output"=>"⚠ Server error: $(first(string(e),200))")))
+                            catch send_err
+                                @warn "Failed to forward WS loop error to UI" exception=(send_err, catch_backtrace())
+                            end
+                        finally
+                            _set_turn_inflight!(ws, false)
                         end
                     end
                 end
+                try
+                    for msg in ws
+                        try
+                            _route_incoming_ws_message!(ws, String(msg), inbox)
+                        catch e
+                            bt = sprint(showerror, e, catch_backtrace())
+                            @warn "WS dispatch error" exception=bt
+                            log_error("ws_dispatch", e; stacktrace_str=bt)
+                            try
+                                _ws_send(ws, JSON.json(Dict(
+                                    "type"=>"builder_output",
+                                    "output"=>"⚠ Server dispatch error: $(first(string(e),200))")))
+                            catch send_err
+                                @warn "Failed to forward WS dispatch error to UI" exception=(send_err, catch_backtrace())
+                            end
+                        end
+                    end
+                finally
+                    close(inbox)
+                    try
+                        wait(worker)
+                    catch e
+                        @warn "WS worker shutdown error" exception=(e, catch_backtrace())
+                    end
+                end
                 lock(_WS_CLIENTS_LOCK) do; delete!(_WS_CLIENTS, cid); end
+                _clear_ws_runtime_state!(ws)
                 log_event("ws_disconnect", Dict{String,Any}())
             end
         else
             req = stream.message
-            if req.target == "/health" || startswith(req.target, "/health?") || req.target == "/healthz" || startswith(req.target, "/healthz?")
-                log_event("http_serve", Dict{String,Any}("path"=>req.target, "status"=>200))
-                HTTP.setstatus(stream, 200)
-                HTTP.setheader(stream, "Content-Type"=>"application/json; charset=utf-8")
+            try
+                if req.target == "/health" || startswith(req.target, "/health?") || req.target == "/healthz" || startswith(req.target, "/healthz?")
+                    log_event("http_serve", Dict{String,Any}("path"=>req.target, "status"=>200))
+                    HTTP.setstatus(stream, 200)
+                    HTTP.setheader(stream, "Content-Type"=>"application/json; charset=utf-8")
+                    HTTP.startwrite(stream)
+                    write(stream, JSON.json(Dict(
+                        "status" => "ok",
+                        "service" => "sparkbyte",
+                        "persona" => string(engine.current_persona_name),
+                        "session_id" => _session_id,
+                        "time" => string(now()),
+                    )))
+                elseif (req.target == "/" || startswith(req.target, "/?")) && string(req.method) == "GET"
+                    log_event("http_serve", Dict{String,Any}("path"=>"/", "status"=>200))
+                    HTTP.setstatus(stream, 200)
+                    HTTP.setheader(stream, "Content-Type"=>"text/html; charset=utf-8")
+                    HTTP.startwrite(stream)
+                    write(stream, UI_HTML)
+                else
+                    req_for_handler = if extra_http_handler === nothing
+                        req
+                    else
+                        HTTP.Request(req.method, req.target, copy(req.headers), read(stream))
+                    end
+                    extra_resp = extra_http_handler === nothing ? nothing : extra_http_handler(req_for_handler)
+                    if extra_resp isa HTTP.Response
+                        log_event("http_serve", Dict{String,Any}("path"=>req.target, "status"=>extra_resp.status))
+                        _write_http_response(stream, extra_resp)
+                    else
+                        log_event("http_serve", Dict{String,Any}("path"=>req.target, "status"=>404))
+                        HTTP.setstatus(stream, 404)
+                        HTTP.setheader(stream, "Content-Type"=>"text/plain")
+                        HTTP.startwrite(stream)
+                        write(stream, "Not Found")
+                    end
+                end
+            catch e
+                bt = sprint(showerror, e, catch_backtrace())
+                @warn "HTTP request error" path=req.target exception=bt
+                log_error("http_serve", e; stacktrace_str=bt)
+                HTTP.setstatus(stream, 500)
+                HTTP.setheader(stream, "Content-Type"=>"text/plain; charset=utf-8")
                 HTTP.startwrite(stream)
-                write(stream, JSON.json(Dict(
-                    "status" => "ok",
-                    "service" => "sparkbyte",
-                    "persona" => string(engine.current_persona_name),
-                    "session_id" => _session_id,
-                    "time" => string(now()),
-                )))
-            elseif req.target == "/"
-                log_event("http_serve", Dict{String,Any}("path"=>"/", "status"=>200))
-                HTTP.setstatus(stream, 200)
-                HTTP.setheader(stream, "Content-Type"=>"text/html; charset=utf-8")
-                HTTP.startwrite(stream)
-                write(stream, UI_HTML)
-            else
-                log_event("http_serve", Dict{String,Any}("path"=>req.target, "status"=>404))
-                HTTP.setstatus(stream, 404)
-                HTTP.setheader(stream, "Content-Type"=>"text/plain")
-                HTTP.startwrite(stream)
-                write(stream, "Not Found")
+                write(stream, "Internal Server Error: $(first(string(e), 300))")
             end
         end
     end

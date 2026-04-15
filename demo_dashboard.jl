@@ -1,16 +1,10 @@
-using JLEngine
-# Start dashboard on port 8080
-JLEngine.BYTE.dispatch("live_dashboard", Dict("port"=>8080))
-println("Dashboard started. Opening browser...")
-# Forge a test tool to generate an event
-forge_res = JLEngine.BYTE.dispatch("forge_new_tool", Dict(
-    "name"=>"hello_world",
-    "code"=>"function tool_hello_world(args)\n    Dict(\"result\"=>\"Hello, gremlin!\")\nend",
-    "description"=>"A simple hello world tool",
-    "parameters"=>Dict("type"=>"OBJECT","properties"=>Dict(),"required"=>String[])
-))
-println("Forge result: ", forge_res)
-# Keep process alive so dashboard stays up
-while true
-    sleep(1)
+if !haskey(ENV, "SPARKBYTE_PORT")
+    ENV["SPARKBYTE_PORT"] = "8081"
 end
+
+if !haskey(ENV, "SPARKBYTE_HOST")
+    ENV["SPARKBYTE_HOST"] = "127.0.0.1"
+end
+
+println("demo_dashboard.jl now launches the real SparkByte UI on http://$(ENV["SPARKBYTE_HOST"]):$(ENV["SPARKBYTE_PORT"])")
+include(joinpath(@__DIR__, "sparkbyte.jl"))

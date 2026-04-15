@@ -10,7 +10,7 @@ const FIXTURES = joinpath(@__DIR__, "fixtures")
 
     @testset "Config and MPF" begin
         config = load_json_safely(joinpath(FIXTURES, "JLframe_Engine_Framework.json"))
-        @test get(config, "jl_engine", Dict())["backends"]["default"] == "ollama-local"
+        @test get(config, "jl_engine", Dict())["backends"]["default"] == "google-gemini"
 
         profiles = load_mpf_registry(registry_path)
         @test haskey(profiles, "SparkByte")
@@ -122,6 +122,52 @@ const FIXTURES = joinpath(@__DIR__, "fixtures")
         reply, meta = generate(backend, [Dict("role" => "user", "content" => "hello world")]; options=Dict("temperature" => 0.4))
         @test reply == "hello world"
         @test meta["provider"] == "noop"
+
+        cerebras_backend = get_backend("cerebras")
+        @test get(cerebras_backend.config, "api_key", "") == ""
+        @test get(cerebras_backend.config, "env_key", "") == "CEREBRAS_API_KEY"
+
+        override_backend = get_backend("cerebras"; overrides=Dict("api_key" => "override-key"))
+        @test get(override_backend.config, "api_key", "") == "override-key"
+
+        @test JLEngine._resolve_runtime_api_key(cerebras_backend.config; fallback_env_keys=["JLE_CEREBRAS_TEST_KEY"]) == ""
+        withenv("JLE_CEREBRAS_TEST_KEY" => "fresh-key") do
+            @test JLEngine._resolve_runtime_api_key(cerebras_backend.config; fallback_env_keys=["JLE_CEREBRAS_TEST_KEY"]) == "fresh-key"
+        end
+    end
+
+    @testset "Reddit" begin
+        @test haskey(JLEngine.TOOL_MAP, "reddit_submit")
+
+        reddit_schema = filter(JLEngine.TOOLS_SCHEMA) do group
+            any(get(decl, "name", "") == "reddit_submit" for decl in get(group, "function_declarations", Any[]))
+        end
+        @test !isempty(reddit_schema)
+
+        preview = JLEngine.tool_reddit_submit(Dict(
+            "subreddit" => "r/LocalLLaMA",
+            "title" => "SparkByte is live",
+            "text" => "Testing the Reddit lane before launch.",
+            "dry_run" => true,
+        ))
+        @test get(preview, "result", "") == "Reddit submission dry run only. No post was sent."
+        @test get(preview, "subreddit", "") == "LocalLLaMA"
+        @test get(preview, "kind", "") == "self"
+        @test get(get(preview, "payload_preview", Dict{String,Any}()), "sr", "") == "LocalLLaMA"
+    end
+
+    @testset "Gemini Thinking" begin
+        cfg_25 = JLEngine.BYTE._gemini_thinking_config("gemini-2.5-flash")
+        @test get(cfg_25, "thinkingBudget", nothing) == -1
+        @test !haskey(cfg_25, "thinkingLevel")
+
+        cfg_25_lite = JLEngine.BYTE._gemini_thinking_config("gemini-2.5-flash-lite-preview")
+        @test get(cfg_25_lite, "thinkingBudget", nothing) == 0
+
+        cfg_3 = JLEngine.BYTE._gemini_thinking_config("gemini-3.1-flash-lite-preview")
+        @test get(cfg_3, "thinkingLevel", nothing) == "minimal"
+
+        @test isempty(JLEngine.BYTE._gemini_thinking_config("gpt-4o"))
     end
 
     @testset "Core" begin
@@ -137,4 +183,8 @@ const FIXTURES = joinpath(@__DIR__, "fixtures")
         @test turn["ok"] == true
         @test turn["reply"] == "Say hello in one line."
     end
+
+    include("test_a2a_discovery.jl")
+    include("test_a2a_billing.jl")
+    include("test_a2a_protocol.jl")
 end

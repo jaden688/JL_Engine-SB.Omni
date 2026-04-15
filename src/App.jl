@@ -3,6 +3,23 @@ using JSON
 using PythonCall
 using SQLite
 
+# ── Load .env file into ENV (before anything else reads keys) ─────────────────
+let env_path = joinpath(@__DIR__, "..", ".env")
+    if isfile(env_path)
+        for line in eachline(env_path)
+            line = strip(line)
+            isempty(line) || startswith(line, "#") && continue
+            m = match(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$", line)
+            if m !== nothing
+                key, val = string(m[1]), strip(string(m[2]), ['"', '\''])
+                # Don't overwrite keys already set in the real environment
+                isempty(get(ENV, key, "")) && (ENV[key] = val)
+            end
+        end
+        @info "Loaded .env"
+    end
+end
+
 include(joinpath(@__DIR__, "..", "BYTE", "src", "BYTE.jl"))
 include(joinpath(@__DIR__, "..", "a2a_server.jl"))
 
@@ -106,6 +123,7 @@ function _open_memory_db(root::String)
         user_msg_len INTEGER,
         reply_len INTEGER,
         elapsed_ms INTEGER)""")
+    _a2a_init_db!(db)
     return db
 end
 
@@ -116,6 +134,122 @@ function _start_browser_context()
     browser = pw_instance.chromium.launch(headless=true)
     browser_context = browser.new_context()
     return (; pw_instance, browser, browser_context)
+end
+
+# Module-level state for clean shutdown. Set on boot, consumed by shutdown_cleanly!.
+const _browser_stack_ref = Ref{Any}(nothing)
+const _cleanup_done = Ref(false)
+const _julian_service_ref = Ref{Any}(nothing)
+const _julian_service_owned = Ref(false)
+const JULIAN_META_MORPH_HOST = "127.0.0.1"
+const JULIAN_META_MORPH_PORT = 8765
+
+"""
+    shutdown_cleanly!()
+
+Close Playwright browser + pw_instance while Python is still healthy.
+Idempotent — safe to call multiple times. Call this BEFORE `exit(0)` to avoid
+the PythonCall segfault that happens when atexit tries to touch Python objects
+mid-teardown. atexit blocks also call this as a safety net.
+"""
+function shutdown_cleanly!()
+    _cleanup_done[] && return
+    _cleanup_done[] = true
+    _stop_julian_service!()
+    bs = _browser_stack_ref[]
+    bs === nothing && return
+    # IMPORTANT: do NOT use @warn or format exception backtraces here.
+    # Python objects in the exception payload cause GC walks across task
+    # boundaries during exit(), which segfaults. Plain println only.
+    try
+        bs.browser.close()
+    catch
+        println(stderr, "[shutdown_cleanly!] browser.close() raised (ignored)")
+    end
+    try
+        bs.pw_instance.__exit__(nothing, nothing, nothing)
+    catch
+        println(stderr, "[shutdown_cleanly!] pw_instance.__exit__ raised (ignored)")
+    end
+end
+
+function _julian_service_healthy()::Bool
+    status, _ = BYTE._probe_http_status("http://$(JULIAN_META_MORPH_HOST):$(JULIAN_META_MORPH_PORT)/health")
+    return status == 200
+end
+
+function _stop_julian_service!()
+    state = _julian_service_ref[]
+    _julian_service_ref[] = nothing
+    owned = _julian_service_owned[]
+    _julian_service_owned[] = false
+    (state === nothing || !owned) && return
+    proc = getproperty(state, :proc)
+    try
+        kill(proc)
+    catch
+    end
+    try
+        wait(proc)
+    catch
+    end
+end
+
+function _start_julian_service!(root::String)
+    _julian_service_healthy() && return false
+
+    jr = strip(get(ENV, "JULIAN_ROOT", ""))
+    if isempty(jr) || !isdir(jr)
+        @warn "Julian MetaMorph service skipped — JULIAN_ROOT not found" julian_root=jr
+        return false
+    end
+
+    py = strip(get(ENV, "PYTHON", "python"))
+    out_log = open(joinpath(state_root(root), "julian_metamorph.out.log"), "a")
+    err_log = open(joinpath(state_root(root), "julian_metamorph.err.log"), "a")
+    proc = nothing
+    try
+        proc = cd(jr) do
+            withenv("PYTHONPATH" => "src") do
+                run(pipeline(
+                    Cmd([py, "-m", "julian_metamorph.cli", "serve",
+                        "--host", JULIAN_META_MORPH_HOST,
+                        "--port", string(JULIAN_META_MORPH_PORT)]),
+                    stdout=out_log,
+                    stderr=err_log,
+                ); wait=false)
+            end
+        end
+
+        for _ in 1:20
+            _julian_service_healthy() && break
+            sleep(0.5)
+        end
+
+        if _julian_service_healthy()
+            _julian_service_ref[] = (; proc=proc, root=jr)
+            _julian_service_owned[] = true
+            @info "Julian MetaMorph service started" host=JULIAN_META_MORPH_HOST port=JULIAN_META_MORPH_PORT
+            return true
+        end
+
+        @warn "Julian MetaMorph service failed to become ready" root=jr
+        try
+            kill(proc)
+        catch
+        end
+        try
+            wait(proc)
+        catch
+        end
+        return false
+    catch e
+        @warn "Failed to launch Julian MetaMorph service" exception=(e, catch_backtrace())
+        return false
+    finally
+        close(out_log)
+        close(err_log)
+    end
 end
 
 function _seed_self_context!(db::SQLite.DB, root::String)
@@ -325,23 +459,42 @@ function _sync_julian_env!(root::String)
     return
 end
 
-"""Background loop: Julian runs `curiosity-hunt` on an interval. Set `JULIAN_AUTONOMOUS_SECONDS` (e.g. 3600). 0 = off."""
+const JULIAN_DEFAULT_INTERVAL_SECONDS = 3600
+
+"""
+Background loop: Julian runs `curiosity-hunt` on an interval.
+Default: every $(JULIAN_DEFAULT_INTERVAL_SECONDS)s (1 hour). Override with `JULIAN_AUTONOMOUS_SECONDS`.
+Set to -1 to explicitly disable (not recommended).
+"""
 function _start_julian_autonomous_loop!(root::String)
-    raw = strip(get(ENV, "JULIAN_AUTONOMOUS_SECONDS", "0"))
-    sec = tryparse(Int, raw)
-    if sec === nothing || sec <= 0
+    raw = strip(get(ENV, "JULIAN_AUTONOMOUS_SECONDS", ""))
+    sec = isempty(raw) ? JULIAN_DEFAULT_INTERVAL_SECONDS : tryparse(Int, raw)
+    if sec === nothing || sec < 0
+        @info "Julian autonomous curiosity DISABLED (JULIAN_AUTONOMOUS_SECONDS=$raw)"
         return
     end
-    @info "Julian autonomous curiosity" interval_seconds=sec
+    sec = max(sec, 120)  # floor at 2 minutes to avoid hammering GitHub
+    jr = strip(get(ENV, "JULIAN_ROOT", ""))
+    if isempty(jr) || !isdir(jr)
+        @warn "Julian autonomous loop skipped — JULIAN_ROOT not found" julian_root=jr
+        return
+    end
+    println("🔁 Julian autonomous curiosity → every $(sec)s")
     @async begin
+        sleep(30)  # let SparkByte finish booting before first hunt
         while true
             try
-                sleep(sec)
                 r = BYTE.run_julian_curiosity_hunt!(root; broadcast_result=true)
-                get(r, "ok", false) || @warn "Julian autonomous hunt did not complete" result=r
+                if get(r, "ok", false)
+                    data = get(r, "data", Dict())
+                    @info "Julian hunt completed" task=get(data, "picked_task", "?") hits=get(data, "hit_count", 0)
+                else
+                    @warn "Julian autonomous hunt did not complete" result=r
+                end
             catch e
                 @warn "Julian autonomous loop error" exception=(e, catch_backtrace())
             end
+            sleep(sec)
         end
     end
     return
@@ -356,9 +509,22 @@ function app_main(; host::String=get(ENV, "SPARKBYTE_HOST", DEFAULT_HOST),
 
     db = _open_memory_db(root)
     browser_stack = _start_browser_context()
+    _browser_stack_ref[] = browser_stack
+    _cleanup_done[] = false
     BYTE.init(db, browser_stack.browser_context, root)
     _seed_self_context!(db, root)
     engine = _build_engine(root)
+    if _looks_true(get(ENV, "JULIAN_MANAGED_SERVICE", "1"))
+        _start_julian_service!(root)
+    end
+
+    # Sync BYTE's model/provider state into JLEngine Backends on first boot
+    try
+        JLEngine.sync_from_byte!()
+    catch e
+        @warn "Initial sync_from_byte! failed — backends fall back to env-detected defaults" exception=(e, catch_backtrace())
+    end
+
     _start_julian_autonomous_loop!(root)
 
     atexit() do
@@ -368,18 +534,18 @@ function app_main(; host::String=get(ENV, "SPARKBYTE_HOST", DEFAULT_HOST),
             @warn "Failed to close SparkByte session cleanly" exception=(err, catch_backtrace())
         end
     end
+    # Safety-net atexit: only runs Python cleanup if shutdown_cleanly! wasn't
+    # already called explicitly. Guarded by Py_IsInitialized to avoid segfault
+    # if the runtime has already torn down. For graceful restart/reset, callers
+    # should invoke App.shutdown_cleanly!() BEFORE exit(0) — that's the safe path.
     atexit() do
+        _cleanup_done[] && return
         try
-            browser_stack.browser.close()
-        catch err
-            @warn "Failed to close browser cleanly" exception=(err, catch_backtrace())
-        end
-    end
-    atexit() do
-        try
-            browser_stack.pw_instance.__exit__(nothing, nothing, nothing)
-        catch err
-            @warn "Failed to close Playwright cleanly" exception=(err, catch_backtrace())
+            py_alive = ccall((:Py_IsInitialized, PythonCall.C.libpython), Cint, ()) != 0
+            py_alive && shutdown_cleanly!()
+        catch
+            # Swallow silently — logging exception payloads at exit causes GC
+            # walks across Python objects → segfault. Process is exiting anyway.
         end
     end
 
@@ -388,6 +554,7 @@ function app_main(; host::String=get(ENV, "SPARKBYTE_HOST", DEFAULT_HOST),
     # Boot A2A server alongside SparkByte
     engine_ref = Ref(engine)
     start_a2a_server(db; engine_ref=engine_ref)
+    public_a2a_handler = req -> handle_public_a2a_request(req, db; engine_ref=engine_ref)
 
     if launch_browser
         @async try
@@ -397,7 +564,7 @@ function app_main(; host::String=get(ENV, "SPARKBYTE_HOST", DEFAULT_HOST),
             @warn "Browser launch failed" exception=(e, catch_backtrace())
         end
     end
-    BYTE.serve(engine; host=host, port=port)
+    BYTE.serve(engine; host=host, port=port, extra_http_handler=public_a2a_handler)
     return
 end
 

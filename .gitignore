@@ -1,9 +1,14 @@
 # Secrets
 .env
+secret.mystic
+.azure-cli/
+.azure/
 
 # Database
 *.db
 *.sqlite
+*.db-shm
+*.db-wal
 
 # Julia artifacts
 Manifest.toml
@@ -29,12 +34,29 @@ telemetry_test.txt
 # Dynamic tool registry (runtime-generated)
 dynamic_tools_registry.json
 dynamic_tools.jl
+dynamic_tools_quarantine.json
 
 # Inspection / scratch dirs
 _mcp_inspect/
+_clutter/
 mcp.zip
 a2a-inspector/
 a2a-tck/
+elevenlabs-mcp/
+JulianMetaMorph.zip
+JulianMetaMorph/JulianMetaMorph/data/.julian_curiosity_idx
+temp/
+temp_*.jl
+.dockertrigger
+
+# Deploy artifacts / local notes
+deploy_log.txt
+CLAUDE.md
+AI_Automation_Blueprint.md
+AI_Automation_Blueprint.pdf
+
+# Editor
+.vscode/
 
 # Python
 __pycache__/

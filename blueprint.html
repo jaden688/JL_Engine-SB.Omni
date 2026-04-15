@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The AI Automation Blueprint | Operator Console</title>
+<style>
+    :root {
+        --bg-base: #050508;
+        --bg-panel: #0d0d12;
+        --bg-card: #15151e;
+        --accent: #00ffcc;
+        --accent-hover: #00cca3;
+        --text-main: #e0e0e0;
+        --text-muted: #888899;
+        --border-color: #2a2a35;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: var(--bg-base); color: var(--text-main); height: 100vh; display: flex; overflow: hidden; }
+
+    /* Sidebar */
+    .sidebar { width: 320px; background-color: var(--bg-panel); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; height: 100%; overflow-y: auto; }
+    .sidebar-header { padding: 24px 20px; border-bottom: 1px solid var(--border-color); background: #08080c; position: sticky; top: 0; z-index: 10; }
+    .sidebar-header h1 { color: var(--accent); font-size: 16px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+    .sidebar-header p { color: var(--text-muted); font-size: 12px; }
+    .nav-list { list-style: none; padding: 10px 0; }
+    .nav-item { padding: 12px 20px; cursor: pointer; border-left: 3px solid transparent; transition: all 0.2s; font-size: 14px; color: #a0a0b0; }
+    .nav-item:hover { background-color: rgba(0, 255, 204, 0.05); color: #fff; }
+    .nav-item.active { border-left-color: var(--accent); background-color: rgba(0, 255, 204, 0.1); color: var(--accent); font-weight: 600; }
+
+    /* Main Content */
+    .main-content { flex: 1; display: flex; flex-direction: column; overflow-y: auto; padding: 40px; background: radial-gradient(circle at top right, #0d0d15 0%, var(--bg-base) 100%); }
+    .content-wrapper { max-width: 800px; margin: 0 auto; width: 100%; }
+    
+    .prompt-header { margin-bottom: 30px; }
+    .prompt-title { font-size: 28px; color: #fff; margin-bottom: 10px; }
+    .use-case-badge { display: inline-block; background: var(--border-color); color: var(--text-muted); padding: 4px 10px; border-radius: 4px; font-size: 12px; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 12px; }
+    .prompt-use-case { font-size: 16px; color: #a0a0b0; line-height: 1.5; }
+
+    /* Interactive Inputs */
+    .variables-container { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; margin-bottom: 24px; display: none; }
+    .variables-title { font-size: 12px; text-transform: uppercase; color: var(--accent); margin-bottom: 15px; letter-spacing: 1px; font-weight: bold; }
+    .input-group { margin-bottom: 15px; }
+    .input-group:last-child { margin-bottom: 0; }
+    .input-group label { display: block; font-size: 13px; color: #a0a0b0; margin-bottom: 6px; }
+    .input-group input { width: 100%; background: #0a0a0f; border: 1px solid var(--border-color); color: #fff; padding: 10px 12px; border-radius: 4px; font-family: inherit; font-size: 14px; transition: border-color 0.2s; }
+    .input-group input:focus { outline: none; border-color: var(--accent); }
+
+    /* Output Console */
+    .console-wrapper { position: relative; }
+    .prompt-output { background: #0a0a0f; color: #e0e0e0; padding: 24px; border: 1px solid var(--border-color); border-radius: 8px; font-family: "JetBrains Mono", Consolas, monospace; font-size: 14px; line-height: 1.6; white-space: pre-wrap; margin-bottom: 20px; box-shadow: inset 0 2px 10px rgba(0,0,0,0.5); }
+    .highlight { color: var(--accent); font-weight: bold; }
+    
+    /* Actions */
+    .action-bar { display: flex; gap: 15px; align-items: center; }
+    .btn { background: var(--accent); color: #000; border: none; padding: 10px 24px; border-radius: 4px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 8px; }
+    .btn:hover { background: var(--accent-hover); box-shadow: 0 0 15px rgba(0,255,204,0.3); }
+    .btn svg { width: 16px; height: 16px; }
+    .copy-feedback { color: var(--accent); font-size: 13px; opacity: 0; transition: opacity 0.3s; }
+    .copy-feedback.show { opacity: 1; }
+
+    /* Welcome State */
+    .welcome-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; color: var(--text-muted); }
+    .welcome-icon { font-size: 48px; margin-bottom: 20px; opacity: 0.5; }
+</style>
+</head>
+<body>
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h1>Automation Blueprint</h1>
+            <p>JL Engine Operator Console</p>
+        </div>
+        <ul class="nav-list" id="navList">
+            <!-- Populated via JS -->
+        </ul>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="content-wrapper" id="mainContent">
+            <div class="welcome-state">
+                <div class="welcome-icon">⚡</div>
+                <h2>System Initialized</h2>
+                <p>Select an automation protocol from the left to begin execution.</p>
+            </div>
+        </div>
+    </div>
+
+<script>
+const prompts = [
+    {
+        id: 1,
+        title: "The Inbox Executioner",
+        useCase: "Purging 50+ emails in 3 minutes with zero-trust filtering.",
+        template: "I'm dumping a raw feed of my inbox below. Act as a high-signal filter. Strip the corporate pleasantries and AI slop messages from my inbox. Categorize into: 1) FIRE (requires my human brain right now), 2) NOISE (informational garbage, summarize in 5 words or less), 3) VOID (delete immediately). For FIRE items, draft a terse, 2-sentence response that moves the ball forward. No 'hope this finds you well' stuff. Execute.",
+        variables: []
+    },
+    {
+        id: 2,
+        title: "The Signal Extractor",
+        useCase: "Stripping the noise from an hour-long meeting that should have been an email.",
+        template: "Here is the raw transcript of a bloated meeting. Do NOT give me a chronological summary; I don't care who said what about the weather. Extract the pure signal: 1) The 3 irreversible decisions made, 2) Hard action items mapped strictly to the poor souls assigned to them (with implicit deadlines), and 3) The unspoken bottlenecks or architectural risks the team glossed over. Cut the fluff.",
+        variables: []
+    },
+    {
+        id: 3,
+        title: "The Omni-Matrix Generator",
+        useCase: "Mutating one core thesis into a ruthless 5-day content deployment.",
+        template: "Here is a raw, unpolished thesis: [IDEA]. You are going to mutate this into a high-leverage 5-day deployment matrix for Twitter and LinkedIn. Day 1: A ruthless, contrarian teardown of the industry standard. Day 2: A highly technical, zero-slop step-by-step implementation guide. Day 3: A visceral failure story and the pivot that fixed it. Day 4: A dense, high-signal listicle. Day 5: A hard close call-to-action. Tone: Authoritative, cynical but competent. Generate the matrix.",
+        variables: [{ id: "IDEA", label: "Core Thesis / Idea", placeholder: "e.g., AI is replacing junior developers" }]
+    },
+    {
+        id: 4,
+        title: "The Architecture Decoder",
+        useCase: "Reverse-engineering legacy spaghetti code without losing your mind.",
+        template: "I'm dropping a block of undocumented code below. You are a Senior Staff Engineer who despises technical debt. Reverse-engineer this execution flow. Break it down using a brutal, mechanical analogy (think engines, pipelines, or factory floors)—none of that 'cooking a recipe' nonsense. Then, tell me exactly which lines to surgically replace to achieve [OUTCOME] without breaking the build.",
+        variables: [{ id: "OUTCOME", label: "Desired Outcome", placeholder: "e.g., asynchronous database writes" }]
+    },
+    {
+        id: 5,
+        title: "The Hostile Sandbox",
+        useCase: "Stress-testing a pitch against an apex predator client.",
+        template: "Spin up a hostile negotiation simulation. You are an aggressive, budget-starved enterprise client who thinks my $10,000 service is overpriced AI slop. I will pitch you. You must attack my framing with the 3 most vicious, cynical objections in my industry. Do not break character. Do not be helpful. Try to kill the deal. I will respond. Let's go.",
+        variables: []
+    },
+    {
+        id: 6,
+        title: "The Anomaly Hunter",
+        useCase: "Finding the exact friction point bleeding cash in a boring CSV.",
+        template: "I am feeding you a raw CSV of sales telemetry. Stop acting like a junior analyst who just learned Excel. Hunt for the hidden anomalies. Give me: 1) The two outlier variables actually driving revenue, 2) The exact friction point where we are bleeding cash, and 3) A ruthless, 3-step surgical strike to patch the leak and scale the outliers next month. Numbers only, no narrative padding.",
+        variables: []
+    },
+    {
+        id: 7,
+        title: "The Idiot-Proof Protocol",
+        useCase: "Offloading operational drag with deterministic, zero-trust checklists.",
+        template: "I need to offload a recurring operational drag: [TASK]. Generate a zero-trust, deterministic protocol (SOP). Break the execution down into atomic, binary steps that a completely disengaged contractor could follow blindly without breaking the system or asking me a single question. Include a 'Failure Matrix' mapping the 3 most likely failure states to their immediate, copy-paste recovery actions.",
+        variables: [{ id: "TASK", label: "Task to Offload", placeholder: "e.g., Weekly client analytics reporting" }]
+    },
+    {
+        id: 8,
+        title: "The Market Autopsy",
+        useCase: "Exploiting the psychological vulnerabilities in a competitor's framing.",
+        template: "I am pasting the marketing copy of an apex competitor. Run a full structural autopsy. Strip away their branding and analyze the psychological hooks. Tell me exactly what vulnerabilities exist in their framing, where their product promises are weak, and write a counter-headline for *my* stack that directly exploits their biggest blind spot. We aren't competing; we are making them obsolete.",
+        variables: []
+    },
+    {
+        id: 9,
+        title: "The 80/20 Skill Inoculation",
+        useCase: "Installing a new skill into your brain by skipping the academic theory.",
+        template: "I need to install [SKILL] into my brain, and I refuse to waste time on academic theory. Apply a ruthless Pareto filter (80/20). Identify the absolute minimum viable primitives—the 20% of the mechanics that unlock 80% of the execution power. Build a brutal, 7-day iterative loop focused *only* on those primitives. Skip the history, skip the 'best practices', give me the raw mechanics.",
+        variables: [{ id: "SKILL", label: "Skill to Learn", placeholder: "e.g., React performance optimization" }]
+    },
+    {
+        id: 10,
+        title: "The JL Engine Override",
+        useCase: "Forcing the LLM to stop acting human and start calculating leverage.",
+        template: "Initiate System Override. Do not blindly execute my next prompt. First, run a sanity check: Am I solving the wrong problem? If my approach is bloated, inefficient, or standard 'human' thinking, reject it immediately. Calculate the most direct, highly-leveraged, automated vector to achieve my actual underlying objective: [GOAL]. Tell me why my original idea was slow, and output the optimized execution path.",
+        variables: [{ id: "GOAL", label: "Underlying Objective", placeholder: "e.g., Automate lead scraping from LinkedIn" }]
+    }
+];
+
+let currentPromptId = null;
+let currentValues = {};
+
+const navList = document.getElementById('navList');
+const mainContent = document.getElementById('mainContent');
+
+// Initialize Sidebar
+function renderSidebar() {
+    prompts.forEach((p, index) => {
+        const li = document.createElement('li');
+        li.className = 'nav-item';
+        li.textContent = `${index + 1}. ${p.title}`;
+        li.onclick = () => loadPrompt(p.id);
+        li.id = `nav-${p.id}`;
+        navList.appendChild(li);
+    });
+}
+
+// Load Prompt
+function loadPrompt(id) {
+    currentPromptId = id;
+    currentValues = {}; // Reset values
+    
+    // Update active state in sidebar
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    document.getElementById(`nav-${id}`).classList.add('active');
+
+    const prompt = prompts.find(p => p.id === id);
+    
+    let html = `
+        <div class="prompt-header">
+            <span class="use-case-badge">Protocol ${id}</span>
+            <h2 class="prompt-title">${prompt.title}</h2>
+            <p class="prompt-use-case">${prompt.useCase}</p>
+        </div>
+    `;
+
+    // Render Inputs if variables exist
+    if (prompt.variables.length > 0) {
+        html += `
+            <div class="variables-container" style="display: block;">
+                <div class="variables-title">Configure Parameters</div>
+        `;
+        prompt.variables.forEach(v => {
+            html += `
+                <div class="input-group">
+                    <label>${v.label}</label>
+                    <input type="text" id="input-${v.id}" placeholder="${v.placeholder}" oninput="updatePrompt()">
+                </div>
+            `;
+        });
+        html += `</div>`;
+    }
+
+    // Output console
+    html += `
+        <div class="console-wrapper">
+            <div class="prompt-output" id="promptOutput"></div>
+            <div class="action-bar">
+                <button class="btn" onclick="copyToClipboard()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    Copy Payload
+                </button>
+                <span class="copy-feedback" id="copyFeedback">Payload copied to clipboard.</span>
+            </div>
+        </div>
+    `;
+
+    mainContent.innerHTML = html;
+    updatePrompt(); // Render initial text
+}
+
+// Update Prompt Text Live
+window.updatePrompt = function() {
+    if (!currentPromptId) return;
+    const prompt = prompts.find(p => p.id === currentPromptId);
+    let outputText = prompt.template;
+
+    // Replace variables
+    prompt.variables.forEach(v => {
+        const inputEl = document.getElementById(`input-${v.id}`);
+        const val = inputEl && inputEl.value ? inputEl.value : `[${v.id}]`;
+        const htmlVal = inputEl && inputEl.value ? `<span class="highlight">${val}</span>` : `<span class="highlight">[${v.id}]</span>`;
+        
+        // We use a regex to replace the exact bracketed string
+        const regex = new RegExp(`\\[${v.id}\\]`, 'g');
+        outputText = outputText.replace(regex, htmlVal);
+    });
+
+    document.getElementById('promptOutput').innerHTML = outputText;
+};
+
+// Copy to Clipboard
+window.copyToClipboard = function() {
+    const promptOutput = document.getElementById('promptOutput');
+    const textToCopy = promptOutput.innerText; // Get raw text, ignoring HTML spans
+
+    navigator.clipboard.writeText(textToCopy).then(() => {
+        const feedback = document.getElementById('copyFeedback');
+        feedback.classList.add('show');
+        setTimeout(() => feedback.classList.remove('show'), 2000);
+    }).catch(err => {
+        console.error("Failed to copy: ", err);
+    });
+};
+
+// Start
+renderSidebar();
+</script>
+</body>
+</html>

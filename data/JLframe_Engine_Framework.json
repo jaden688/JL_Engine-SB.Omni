@@ -10,8 +10,8 @@
       "log_file": "logs/command_bridge.log"
     },
     "backends": {
-      "default": "ollama-local",
-      "brain_backend": "ollama-local",
+      "default": "google-gemini",
+      "brain_backend": "google-gemini",
       "tool_backend": "open_interpreter",
       "brain_config": {}
     },

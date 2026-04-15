@@ -143,16 +143,17 @@ const TOOLS_SCHEMA = [Dict("function_declarations" => [
     ),
     Dict(
         "name" => "metamorph",
-        "description" => "Self-repair, code-grabber, and health checker. Use when a tool is broken, missing from dispatch, or the runtime needs healing. Can reload forged tools from disk, re-eval source files, restore the full TOOL_MAP to a known-good state, call JulianMetaMorph to hunt real GitHub code patterns, or run a full health check to surface WS type gaps, missing tool schemas, and dead handlers.",
+        "description" => "Self-repair, forged-tool lifecycle manager, code-grabber, and health checker. Use when tools are broken, repeatedly failing, quarantined, missing from dispatch, or the runtime needs healing. Can inspect lifecycle state, quarantine/unquarantine/delete forged tools, reload tools from disk, re-eval source files, restore TOOL_MAP, call JulianMetaMorph for real GitHub patterns, or run a full health check.",
         "parameters" => Dict(
             "type" => "OBJECT",
             "properties" => Dict(
                 "action" => Dict(
                     "type" => "STRING",
-                    "description" => "What to do: inspect (audit live tools + health), reload_dynamic_tools (re-load all forged tools from disk), restore_tool (re-forge one tool by name from src/Tools/ or dynamic_tools.jl), reload_source (re-eval a JLEngine .jl file into the runtime), heal_tool_map (re-register all missing static built-ins), grab_from_julian (call JulianMetaMorph hunt-task for real GitHub patterns), curiosity_hunt (Julian picks an interest seed and runs a full autonomous hunt), health_check (full audit: WS type coverage, tool schema gaps, dead handlers, dynamic tool drift)",
-                    "enum" => ["inspect","reload_dynamic_tools","restore_tool","reload_source","heal_tool_map","grab_from_julian","curiosity_hunt","health_check"]
+                    "description" => "What to do: inspect, tool_lifecycle, quarantine_tool, unquarantine_tool, delete_tool, reload_dynamic_tools, restore_tool, reload_source, heal_tool_map, grab_from_julian, curiosity_hunt, health_check",
+                    "enum" => ["inspect","tool_lifecycle","quarantine_tool","unquarantine_tool","delete_tool","reload_dynamic_tools","restore_tool","reload_source","heal_tool_map","grab_from_julian","curiosity_hunt","health_check"]
                 ),
-                "name" => Dict("type" => "STRING", "description" => "Tool name — required for restore_tool (e.g. 'run_shell')"),
+                "name" => Dict("type" => "STRING", "description" => "Tool name — required for restore_tool, quarantine_tool, unquarantine_tool, delete_tool, or optional filter for tool_lifecycle"),
+                "reason" => Dict("type" => "STRING", "description" => "Optional reason for quarantine_tool"),
                 "path" => Dict("type" => "STRING", "description" => "Relative source file path — required for reload_source (e.g. 'src/JLEngine/Core.jl')"),
                 "task" => Dict("type" => "STRING", "description" => "Task description — required for grab_from_julian (e.g. 'julia websocket agentic loop')")
             ),
@@ -194,9 +195,60 @@ const TOOLS_SCHEMA = [Dict("function_declarations" => [
                 "webhook_url" => Dict("type" => "STRING", "description" => "Discord webhook URL (overrides DISCORD_WEBHOOK_URL env var)"),
                 "username"    => Dict("type" => "STRING", "description" => "Display name for the bot post (default: SparkByte)"),
                 "avatar_url"  => Dict("type" => "STRING", "description" => "Avatar image URL for the post"),
-                "embeds"      => Dict("type" => "ARRAY",  "description" => "Rich embed objects — title, description, color, fields, url, thumbnail, footer")
+                "embeds"      => Dict(
+                    "type" => "ARRAY",
+                    "description" => "Rich embed objects — title, description, color, fields, url, thumbnail, footer",
+                    "items" => Dict(
+                        "type" => "OBJECT",
+                        "properties" => Dict(
+                            "title" => Dict("type" => "STRING"),
+                            "description" => Dict("type" => "STRING"),
+                            "url" => Dict("type" => "STRING"),
+                            "color" => Dict("type" => "INTEGER"),
+                            "fields" => Dict(
+                                "type" => "ARRAY",
+                                "items" => Dict(
+                                    "type" => "OBJECT",
+                                    "properties" => Dict(
+                                        "name" => Dict("type" => "STRING"),
+                                        "value" => Dict("type" => "STRING"),
+                                        "inline" => Dict("type" => "BOOLEAN")
+                                    ),
+                                    "required" => ["name", "value"]
+                                )
+                            )
+                        )
+                    )
+                )
             ),
             "required" => []
+        )
+    ),
+    Dict(
+        "name" => "reddit_submit",
+        "description" => "Submit a self-post or link post to Reddit through OAuth. Supports dry runs plus env-based auth via REDDIT_ACCESS_TOKEN or REDDIT_CLIENT_ID + REDDIT_REFRESH_TOKEN. Use this to push launch copy to subreddits like r/LocalLLaMA, r/JuliaLang, or r/SideProject.",
+        "parameters" => Dict(
+            "type" => "OBJECT",
+            "properties" => Dict(
+                "subreddit" => Dict("type" => "STRING", "description" => "Target subreddit name, for example LocalLLaMA. You can also pass r/LocalLLaMA."),
+                "title" => Dict("type" => "STRING", "description" => "Post title, up to 300 characters."),
+                "text" => Dict("type" => "STRING", "description" => "Body text for a self post."),
+                "url" => Dict("type" => "STRING", "description" => "Destination URL for a link post."),
+                "kind" => Dict("type" => "STRING", "description" => "Post kind. Use 'self' for text posts or 'link' for link posts. If omitted, SparkByte infers it from the provided fields.", "enum" => ["self", "link"]),
+                "dry_run" => Dict("type" => "BOOLEAN", "description" => "Preview the payload without sending it."),
+                "access_token" => Dict("type" => "STRING", "description" => "OAuth access token override (default: REDDIT_ACCESS_TOKEN env var)."),
+                "client_id" => Dict("type" => "STRING", "description" => "Reddit app client ID (default: REDDIT_CLIENT_ID env var)."),
+                "client_secret" => Dict("type" => "STRING", "description" => "Reddit app client secret (default: REDDIT_CLIENT_SECRET env var)."),
+                "refresh_token" => Dict("type" => "STRING", "description" => "Reddit OAuth refresh token (default: REDDIT_REFRESH_TOKEN env var)."),
+                "user_agent" => Dict("type" => "STRING", "description" => "Reddit User-Agent string (default: REDDIT_USER_AGENT env var or a SparkByte fallback)."),
+                "flair_id" => Dict("type" => "STRING", "description" => "Optional flair ID for the submission."),
+                "flair_text" => Dict("type" => "STRING", "description" => "Optional flair text for the submission."),
+                "sendreplies" => Dict("type" => "BOOLEAN", "description" => "Whether Reddit should send comment reply notifications."),
+                "nsfw" => Dict("type" => "BOOLEAN", "description" => "Mark the submission NSFW."),
+                "spoiler" => Dict("type" => "BOOLEAN", "description" => "Mark the submission as a spoiler."),
+                "resubmit" => Dict("type" => "BOOLEAN", "description" => "Allow Reddit to resubmit the same link if it already exists."),
+            ),
+            "required" => ["subreddit", "title"]
         )
     ),
     Dict(

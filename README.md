@@ -216,6 +216,18 @@ graph LR
     MCP -->|read-only| JDB
 ```
 
+The MCP bridge stays local/read-only. If you want to sell the product, the real paid surface is the public A2A API.
+
+---
+
+## A2A Monetization
+
+- `billing/key/create` mints an access key and stores the customer record.
+- `billing/status` and `usage/get` report active subscription state, usage, and estimated spend.
+- `billing/checkout` returns the hosted payment link you configured in `.env`.
+- `billing/portal` returns the hosted customer portal link you configured in `.env`.
+- `billing/link` updates a key after payment, webhook processing, or manual activation.
+
 ---
 
 ## Personas
@@ -249,9 +261,11 @@ Switch in chat: `/gear SparkByte` &nbsp;|&nbsp; Switch in code: `set_persona!(en
 
 ```powershell
 # Local (full host access — recommended for dev)
-cd "C:\Users\J_lin\Desktop\JL_Engine (3)\jl-vs\vscode-main\copilot-separate-leopard"
+cd <repo-root>
 julia sparkbyte.jl
 # Open http://127.0.0.1:8081
+# A2A agent card: http://127.0.0.1:8081/.well-known/agent.json
+# A2A JSON-RPC: POST http://127.0.0.1:8081/  (or /a2a)
 
 # Docker (containerized deploy)
 docker compose up -d

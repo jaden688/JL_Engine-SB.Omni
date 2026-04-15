@@ -56,7 +56,7 @@ docker compose up --build
 |------|-----------|
 | SparkByte | `SPARKBYTE_HOST`, `SPARKBYTE_PORT`, `SPARKBYTE_STATE_DIR`, `SPARKBYTE_ROOT` |
 | A2A | `A2A_HOST`, `A2A_PORT`, `A2A_PUBLIC_URL`, **`A2A_API_KEY`** (set when exposed beyond localhost) |
-| Julian | `JULIAN_ROOT`, `JULIAN_DB`, **`JULIAN_AUTONOMOUS_SECONDS`** (0 = off; e.g. 3600 = hourly curiosity loop) |
+| Julian | `JULIAN_ROOT`, `JULIAN_DB`, **`JULIAN_AUTONOMOUS_SECONDS`** (default 3600 = hourly curiosity loop; -1 to disable) |
 | LLM | `GEMINI_API_KEY`, `OPENAI_API_KEY`, `CEREBRAS_API_KEY`, `XAI_API_KEY`, `OLLAMA_BASE_URL` |
 | GitHub (Julian hunts) | `GITHUB_TOKEN` |
 
@@ -70,7 +70,8 @@ On boot, **`App.jl`** calls **`_sync_julian_env!(root)`** so embedded `JulianMet
 - **`curiosity_hunt`** — runs **`curiosity-hunt`** CLI: rotating/random interest seeds from **`JulianProfile.curiosity_seeds`** (`profile.py` + `curiosity.py`).
 - **CLI:** `hunt-task` and `curiosity-hunt` are registered in `JulianMetaMorph/.../cli.py` (older docs may only list older commands).
 - **FastAPI:** `POST /hunt/curiosity` in `service.py` for the Julian service.
-- **Autonomous loop:** `App.jl` → **`_start_julian_autonomous_loop!(root)`** when `JULIAN_AUTONOMOUS_SECONDS` > 0; writes diary + WS broadcast type **`julian_curiosity`** (UI may need a handler if you want it visible in chat).
+- **Autonomous loop:** `App.jl` → **`_start_julian_autonomous_loop!(root)`** runs **by default** (hourly). First hunt fires 30s after boot. Override interval with `JULIAN_AUTONOMOUS_SECONDS`; set `-1` to disable. Writes diary + WS broadcast type **`julian_curiosity`** (UI may need a handler if you want it visible in chat).
+- **Managed service:** SparkByte can auto-start the embedded Julian MetaMorph FastAPI service on boot (`JULIAN_MANAGED_SERVICE=1`, default) and `shutdown_cleanly!()` tears it down with the engine.
 
 ---
 

@@ -72,16 +72,26 @@ function set_persona!(engine::JLEngineCore, persona_name::AbstractString)
     profile.drive_type !== nothing && set_drive_type!(engine.emotional_aperture, profile.drive_type)
     set_active_persona!(engine.persona_manager, selected_name, engine.current_persona_data, engine.mpf_profiles)
 
+    # Apply the persona's default LLM backend
+    if profile.default_backend_id !== nothing && !isempty(profile.default_backend_id)
+        set_brain_backend_id!(String(profile.default_backend_id))
+    end
+
     engine.current_gait = "walk"
     engine.current_rhythm_mode = "flop"
     engine.stability_score = 0.5
     return true
 end
 
-function analyze_turn!(engine::JLEngineCore, user_message::AbstractString; persona_name=nothing, safety_on::Bool=engine.config.safety_on)
+function analyze_turn!(engine::JLEngineCore, user_message::AbstractString; image=nothing, mime=nothing, persona_name=nothing, safety_on::Bool=engine.config.safety_on)
     persona_name !== nothing && set_persona!(engine, String(persona_name))
 
     signals = score(engine.signal_scorer, user_message)
+    # If image is present, boost arousal or adjust signals if needed
+    if image !== nothing
+        # Vision-based signal adjustment could go here. For now, just boost arousal.
+        # signals.arousal = min(1.0, signals.arousal + 0.1)
+    end
     trigger = _derive_trigger(signals)
     engine.current_gait = _infer_gait(signals)
 
@@ -141,6 +151,7 @@ function analyze_turn!(engine::JLEngineCore, user_message::AbstractString; perso
         "advisory" => advisory,
         "core_rules" => engine.core_rules,
         "memory_context" => get_context(engine.memory_system, engine.current_persona_name),
+        "has_image" => image !== nothing,
     )
 end
 
@@ -155,6 +166,8 @@ function record_turn!(engine::JLEngineCore, user_message::AbstractString, output
             "flags" => Dict{String, Any}(),
         )
     end
+    # Note: image content is currently not saved in SQLite memory to save space, 
+    # but we could add image hashes or small thumbnails if needed.
     update_after_turn!(engine.memory_system, engine.current_persona_name, user_message, output, engine_state)
     rhythm_snapshot = snapshot isa AbstractDict ? get(snapshot, "rhythm", nothing) : nothing
     drift_snapshot = snapshot isa AbstractDict ? get(snapshot, "drift", Dict{String, Any}()) : Dict{String, Any}()
@@ -166,9 +179,9 @@ end
 
 get_llm_boot_prompt(engine::JLEngineCore, target::AbstractString="generic_llm") = get_llm_boot_prompt(engine.current_persona_data, target)
 
-function run_turn!(engine::JLEngineCore, user_message::AbstractString; persona_name=nothing, backend_id=nothing, backend_overrides=nothing)
-    snapshot = analyze_turn!(engine, user_message; persona_name=persona_name)
-    messages = _build_messages(engine, user_message, snapshot)
+function run_turn!(engine::JLEngineCore, user_message::AbstractString; image=nothing, mime=nothing, persona_name=nothing, backend_id=nothing, backend_overrides=nothing)
+    snapshot = analyze_turn!(engine, user_message; image=image, mime=mime, persona_name=persona_name)
+    messages = _build_messages(engine, user_message, snapshot; image=image, mime=mime)
     options = Dict{String, Any}(
         "temperature" => clamp(get(snapshot["aperture_state"], "temp", 0.45) + get(snapshot["drift"], "temperature_delta", 0.0), 0.1, 1.5),
         "top_p" => clamp(get(snapshot["aperture_state"], "top_p", 0.7), 0.1, 1.0),
@@ -182,6 +195,10 @@ function run_turn!(engine::JLEngineCore, user_message::AbstractString; persona_n
         "telemetry" => merge(snapshot, Dict{String, Any}("backend_meta" => backend_meta, "messages" => messages)),
         "memory_context" => context,
     )
+end
+
+function process_turn(engine::JLEngineCore, user_message::AbstractString; kwargs...)
+    return run_turn!(engine, user_message; kwargs...)
 end
 
 function _derive_trigger(signals::TurnSignals)
@@ -246,7 +263,7 @@ function _drift_response_dict(response::DriftResponse)
     )
 end
 
-function _build_messages(engine::JLEngineCore, user_text::AbstractString, snapshot::AbstractDict)
+function _build_messages(engine::JLEngineCore, user_text::AbstractString, snapshot::AbstractDict; image=nothing, mime=nothing)
     projection = get(snapshot, "persona_projection", engine.current_persona_data)
     lines = String[]
     !isempty(engine.core_rules) && begin
@@ -265,6 +282,28 @@ function _build_messages(engine::JLEngineCore, user_text::AbstractString, snapsh
     push!(lines, "- Drift pressure: $(round(get(get(snapshot, "drift", Dict{String, Any}()), "pressure", 0.0); digits=3))")
     push!(lines, "- Stability score: $(round(engine.stability_score; digits=3))")
 
+    # Inject modular profile directives if loadout was resolved
+    tone_cfg = get(projection, "tone_config", nothing)
+    if tone_cfg isa AbstractDict && !isempty(tone_cfg)
+        push!(lines, "")
+        push!(lines, "TONE: warmth=$(get(tone_cfg, "warmth", 0.5)), sass=$(get(tone_cfg, "sass_level", 0.0)), directness=$(get(tone_cfg, "directness", 0.5)), verbosity=$(get(tone_cfg, "verbosity_bias", "medium"))")
+    end
+    behavior_cfg = get(projection, "behavior_config", nothing)
+    if behavior_cfg isa AbstractDict && !isempty(behavior_cfg)
+        mode = get(behavior_cfg, "mode", "")
+        steps = get(behavior_cfg, "steps", Any[])
+        !isempty(mode) && push!(lines, "BEHAVIOR MODE: $(mode) — steps: $(join(steps, " → "))")
+    end
+    gates_cfg = get(projection, "gates_config", nothing)
+    if gates_cfg isa AbstractDict && !isempty(gates_cfg)
+        push!(lines, "GATES: safety=$(get(gates_cfg, "safety_strictness", "medium")), clarity_check=$(get(gates_cfg, "clarity_check", true)), style_refine=$(get(gates_cfg, "style_refine", true))")
+    end
+    tasks_cfg = get(projection, "tasks_config", nothing)
+    if tasks_cfg isa AbstractDict
+        supported = get(tasks_cfg, "supported_tasks", Any[])
+        !isempty(supported) && push!(lines, "SUPPORTED TASKS: $(join(supported, ", "))")
+    end
+
     history = Any[]
     memory_context = get(snapshot, "memory_context", Dict{String, Any}())
     persona_memory = get(memory_context, "persona_memory", Dict{String, Any}())
@@ -279,6 +318,17 @@ function _build_messages(engine::JLEngineCore, user_text::AbstractString, snapsh
 
     messages = Any[Dict{String, Any}("role" => "system", "content" => join(lines, "\n"))]
     append!(messages, history)
-    push!(messages, Dict{String, Any}("role" => "user", "content" => user_text))
+    
+    # Build multimodal user message if image is present
+    user_content = if image !== nothing
+        Any[
+            Dict{String, Any}("type" => "text", "text" => user_text),
+            Dict{String, Any}("type" => "image", "image" => image, "mime" => something(mime, "image/png"))
+        ]
+    else
+        user_text
+    end
+    
+    push!(messages, Dict{String, Any}("role" => "user", "content" => user_content))
     return messages
 end

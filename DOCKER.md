@@ -10,7 +10,9 @@
 |--------|-----|
 | SparkByte UI / WebSocket | `http://localhost:${SPARKBYTE_PUBLIC_PORT:-8081}` |
 | SparkByte health | `GET http://localhost:8081/health` |
-| **A2A** (agent card + JSON-RPC) | `http://localhost:${A2A_PUBLIC_PORT:-8082}` |
+| **A2A public routes on SparkByte port** | `GET http://localhost:8081/.well-known/agent.json` and `POST http://localhost:8081/` |
+| Public A2A health | `GET http://localhost:8081/a2a/health` |
+| **A2A sidecar** (optional direct port) | `http://localhost:${A2A_PUBLIC_PORT:-8082}` |
 | A2A health | `GET http://localhost:8082/health` |
 | Agent card | `GET http://localhost:8082/.well-known/agent.json` |
 
@@ -49,17 +51,30 @@ docker run --rm -it -p 8081:8081 -p 8082:8082 --env-file .env \
 docker compose up --build
 ```
 
-`compose.yaml` loads `.env`, maps **8081** (SparkByte) and **8082** (A2A), and persists state in volume `sparkbyte-state` → `/app/runtime`.
+`compose.yaml` loads `.env`, maps **8081** (SparkByte) and **8082** (A2A sidecar), and persists state in volume `sparkbyte-state` → `/app/runtime`.
 
 ## A2A (production notes)
 
-- Set **`A2A_API_KEY`** in `.env` for any **public** listener; clients send `Authorization: Bearer <key>`.
+- Set **`A2A_API_KEY`** in `.env` if you want one bootstrap owner key; add **`A2A_ADMIN_KEY`** for billing/admin methods.
+- Set **`A2A_BILLING_ENFORCE=1`** to require active entitlement before `tasks/send` runs.
+- Set **`A2A_BILLING_PAYMENT_LINK_URL`** and **`A2A_BILLING_PORTAL_URL`** for fast launch checkout/portal links, or wire your own payment flow and use `billing/link` to activate accounts.
 - Set **`A2A_PUBLIC_URL`** to the **external** base URL (e.g. `https://agent.example.com`) so `/.well-known/agent.json` advertises the correct endpoint behind a reverse proxy.
-- JSON-RPC: **`POST /`** with methods such as `tasks/send` / `tasks/get` (see `a2a_server.jl`).
+- Public routes now ride the SparkByte port too:
+  - **`GET /.well-known/agent.json`**
+  - **`GET /a2a/health`**
+  - **`POST /`** or **`POST /a2a`** for JSON-RPC methods such as `tasks/send`, `tasks/get`, `tasks/list`, and `tasks/cancel`
+- Monetization RPCs ride the same JSON-RPC lane:
+  - `billing/key/create`
+  - `billing/status`
+  - `usage/get`
+  - `billing/checkout`
+  - `billing/portal`
+  - `billing/link`
+- The sidecar on **`8082`** still exposes the original direct A2A surface for local ops and debugging.
 
 ## Julian bridge (optional)
 
-If **`JulianMetaMorph/JulianMetaMorph`** exists in the repo (copied into the image), SparkByte sets **`JULIAN_ROOT`** / **`JULIAN_DB`** at boot when unset. For **autonomous curiosity hunts**, set **`JULIAN_AUTONOMOUS_SECONDS`** (e.g. `3600`); `0` = off.
+If **`JulianMetaMorph/JulianMetaMorph`** exists in the repo (copied into the image), SparkByte sets **`JULIAN_ROOT`** / **`JULIAN_DB`** at boot when unset. **Julian's autonomous curiosity loop runs by default** (every **3600s / 1 hour**). Override with **`JULIAN_AUTONOMOUS_SECONDS`**; set **`-1`** to explicitly disable.
 
 - **`GITHUB_TOKEN`** in `.env` improves GitHub rate limits for Julian hunts.
 - **MCP** (`mcp_server/server.py`): defaults **`JULIAN_DB`** to `JulianMetaMorph/JulianMetaMorph/data/quarry.db` under the project root unless **`JULIAN_DB`** is set.
