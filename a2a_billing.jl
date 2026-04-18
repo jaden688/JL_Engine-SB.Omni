@@ -45,8 +45,83 @@ _a2a_billing_success_url() = A2A_BILLING_SUCCESS_URL
 _a2a_billing_cancel_url() = A2A_BILLING_CANCEL_URL
 _a2a_billing_portal_return_url() = A2A_BILLING_PORTAL_RETURN_URL
 
+# ── ACP / Commerce discovery ─────────────────────────────────────────────────
+# These surface pricing + payment URLs in the agent card so other agents (and
+# ACP-compatible clients like ChatGPT) can discover what it costs and where to
+# pay.  All driven by env vars that are already defined above — zero new infra.
+
+const A2A_FREE_TIER_DAILY = _env_int("A2A_FREE_TIER_DAILY_REQUESTS", 20)
+const A2A_PRICING_MODEL   = _env_trim("A2A_PRICING_MODEL", "pay-per-use")
+const A2A_PRICING_CURRENCY = _env_trim("A2A_PRICING_CURRENCY", "USD")
+
+"""
+    _a2a_commerce_configured() -> Bool
+
+Returns `true` when at least one pricing rate or a payment link URL is set —
+meaning we should advertise commerce info in the agent card.
+"""
+function _a2a_commerce_configured()::Bool
+    return !isempty(A2A_BILLING_PAYMENT_LINK_URL) ||
+           A2A_PRICE_PER_1K_REQUESTS > 0 ||
+           A2A_PRICE_PER_TOOL_CALL > 0 ||
+           A2A_PRICE_PER_1K_INPUT_CHARS > 0 ||
+           A2A_PRICE_PER_1K_OUTPUT_CHARS > 0
+end
+
+"""
+    _a2a_pricing_block() -> Dict
+
+Returns the `pricing` object to embed in the agent card.  Follows the emerging
+ACP pattern: model, currency, optional free-tier description, and per-unit rates.
+"""
+function _a2a_pricing_block()::Dict{String,Any}
+    block = Dict{String,Any}(
+        "model"    => A2A_PRICING_MODEL,
+        "currency" => A2A_PRICING_CURRENCY,
+    )
+    if A2A_FREE_TIER_DAILY > 0
+        block["freeTier"] = Dict{String,Any}(
+            "requestsPerDay" => A2A_FREE_TIER_DAILY,
+            "description"    => "$(A2A_FREE_TIER_DAILY) free requests per day — no key needed",
+        )
+    end
+    rates = Dict{String,Any}()
+    A2A_PRICE_PER_1K_REQUESTS     > 0 && (rates["per1kRequests"]   = A2A_PRICE_PER_1K_REQUESTS)
+    A2A_PRICE_PER_1K_INPUT_CHARS  > 0 && (rates["per1kInputChars"] = A2A_PRICE_PER_1K_INPUT_CHARS)
+    A2A_PRICE_PER_1K_OUTPUT_CHARS > 0 && (rates["per1kOutputChars"]= A2A_PRICE_PER_1K_OUTPUT_CHARS)
+    A2A_PRICE_PER_TOOL_CALL       > 0 && (rates["perToolCall"]     = A2A_PRICE_PER_TOOL_CALL)
+    !isempty(rates) && (block["rates"] = rates)
+    return block
+end
+
+"""
+    _a2a_payment_block() -> Dict
+
+Returns the `payment` object for the agent card — provider name, checkout link,
+and portal link so calling agents know where to send the human (or themselves
+via ACP) to subscribe.
+"""
+function _a2a_payment_block()::Dict{String,Any}
+    block = Dict{String,Any}("provider" => "stripe")
+    !isempty(A2A_BILLING_PAYMENT_LINK_URL) && (block["checkoutUrl"] = A2A_BILLING_PAYMENT_LINK_URL)
+    !isempty(A2A_BILLING_PORTAL_URL)       && (block["portalUrl"]   = A2A_BILLING_PORTAL_URL)
+    !isempty(A2A_BILLING_SUCCESS_URL)      && (block["successUrl"]  = A2A_BILLING_SUCCESS_URL)
+    return block
+end
+
 function _a2a_public_mode()::Bool
-    return isempty(_a2a_api_key()) && isempty(_a2a_admin_key()) && !_billing_enforce_enabled()
+    # Fail-closed by default. Public (no-auth) mode now requires an explicit
+    # opt-in via A2A_ALLOW_PUBLIC=true — previously, any blank-env deploy ran
+    # open. If no keys AND no opt-in AND no billing, the server still reports
+    # "none" for discovery but _a2a_check_auth will hard-reject below.
+    return _env_bool("A2A_ALLOW_PUBLIC", false) &&
+           isempty(_a2a_api_key()) && isempty(_a2a_admin_key()) && !_billing_enforce_enabled()
+end
+
+function _a2a_unconfigured()::Bool
+    # No keys, no billing, no explicit public opt-in — unsafe default.
+    return isempty(_a2a_api_key()) && isempty(_a2a_admin_key()) &&
+           !_billing_enforce_enabled() && !_env_bool("A2A_ALLOW_PUBLIC", false)
 end
 
 function _a2a_auth_scheme()::String
@@ -271,7 +346,15 @@ function _a2a_auth_response(message::AbstractString; code::Int=401)
     return HTTP.Response(code, ["Content-Type" => "application/json"], JSON.json(Dict("error" => string(message))))
 end
 
-function _a2a_check_auth(req::HTTP.Request, db::SQLite.DB=nothing; require_admin::Bool=false)::Union{Nothing,HTTP.Response}
+function _a2a_check_auth(req::HTTP.Request, db::Union{SQLite.DB,Nothing}=nothing; require_admin::Bool=false)::Union{Nothing,HTTP.Response}
+    # Fail-closed: if the operator hasn't configured ANY auth/billing/public
+    # opt-in, refuse every request. Previously this path silently allowed
+    # unauthenticated access on any blank-env deployment.
+    if _a2a_unconfigured()
+        return _a2a_auth_response(
+            "A2A server is not configured. Set A2A_API_KEY or A2A_ADMIN_KEY, enable billing with A2A_BILLING_ENFORCE=true, or explicitly opt-in with A2A_ALLOW_PUBLIC=true.",
+            code=503)
+    end
     if !_a2a_auth_required() && !require_admin
         return nothing
     end

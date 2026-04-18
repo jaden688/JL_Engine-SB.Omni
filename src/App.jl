@@ -22,6 +22,10 @@ end
 
 include(joinpath(@__DIR__, "..", "BYTE", "src", "BYTE.jl"))
 include(joinpath(@__DIR__, "..", "a2a_server.jl"))
+include(joinpath(@__DIR__, "Autopilot.jl"))
+
+# DataFrames is used by Autopilot for query results — BYTE already depends on it
+import DataFrames
 
 const DEFAULT_HOST = "127.0.0.1"
 const DEFAULT_PORT = 8081
@@ -49,6 +53,9 @@ end
 
 function state_root(root::String=runtime_root())
     configured = strip(get(ENV, "SPARKBYTE_STATE_DIR", ""))
+    if !isempty(configured) && Sys.islinux() && occursin(r"^[A-Za-z]:[\\/]"i, configured)
+        configured = isdir("/app") ? "/app/runtime" : ""
+    end
     dir = isempty(configured) ? root : abspath(configured)
     mkpath(dir)
     return dir
@@ -131,14 +138,56 @@ function _start_browser_context()
     println("👁️  Initializing Web Eyes...")
     sync_playwright = pyimport("playwright.sync_api").sync_playwright
     pw_instance = sync_playwright().__enter__()
-    browser = pw_instance.chromium.launch(headless=true)
-    browser_context = browser.new_context()
+
+    # Persistent profile so cookies / captcha solves / login state survive restarts.
+    # Realistic UA + viewport + locale to defeat trivial bot fingerprinting.
+    # Override with SPARKBYTE_CHROME_PROFILE env var. Nuke the folder to reset.
+    user_data_dir = get(ENV, "SPARKBYTE_CHROME_PROFILE",
+        joinpath(homedir(), ".sparkbyte", "chromium_profile"))
+    try; mkpath(user_data_dir); catch; end
+
+    ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " *
+         "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+
+    launch_args = pylist([
+        "--disable-blink-features=AutomationControlled",
+        "--no-default-browser-check",
+        "--no-first-run",
+        "--disable-features=IsolateOrigins,site-per-process",
+    ])
+
+    browser_context = pw_instance.chromium.launch_persistent_context(
+        user_data_dir,
+        headless=true,
+        user_agent=ua,
+        locale="en-US",
+        timezone_id="America/New_York",
+        viewport=pydict(Dict("width" => 1920, "height" => 1080)),
+        args=launch_args,
+    )
+
+    # Stealth: strip webdriver flag + common automation tells before any page load.
+    stealth_js = """
+    Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+    Object.defineProperty(navigator, 'languages', {get: () => ['en-US','en']});
+    Object.defineProperty(navigator, 'plugins', {get: () => [1,2,3,4,5]});
+    window.chrome = window.chrome || { runtime: {} };
+    """
+    try
+        browser_context.add_init_script(stealth_js)
+    catch e
+        @warn "stealth init_script failed" exception=e
+    end
+
+    # browser handle kept as the context itself so shutdown_cleanly! can close it.
+    browser = browser_context
     return (; pw_instance, browser, browser_context)
 end
 
 # Module-level state for clean shutdown. Set on boot, consumed by shutdown_cleanly!.
 const _browser_stack_ref = Ref{Any}(nothing)
 const _cleanup_done = Ref(false)
+const _session_shutdown_done = Ref(false)
 const _julian_service_ref = Ref{Any}(nothing)
 const _julian_service_owned = Ref(false)
 const JULIAN_META_MORPH_HOST = "127.0.0.1"
@@ -512,10 +561,18 @@ function app_main(; host::String=get(ENV, "SPARKBYTE_HOST", DEFAULT_HOST),
     _browser_stack_ref[] = browser_stack
     _cleanup_done[] = false
     BYTE.init(db, browser_stack.browser_context, root)
-    _seed_self_context!(db, root)
+    try
+        _seed_self_context!(db, root)
+    catch e
+        @warn "Self-context seed skipped (DB may still be warming up)" exception=(e, catch_backtrace())
+    end
     engine = _build_engine(root)
     if _looks_true(get(ENV, "JULIAN_MANAGED_SERVICE", "1"))
-        _start_julian_service!(root)
+        try
+            _start_julian_service!(root)
+        catch e
+            @warn "Julian managed service failed to start — SparkByte will continue without it" exception=(e, catch_backtrace())
+        end
     end
 
     # Sync BYTE's model/provider state into JLEngine Backends on first boot
@@ -528,6 +585,17 @@ function app_main(; host::String=get(ENV, "SPARKBYTE_HOST", DEFAULT_HOST),
     _start_julian_autonomous_loop!(root)
 
     atexit() do
+        # H-12: guard against double-invocation. atexit handlers run LIFO; if
+        # shutdown_cleanly! already ran this sequence, a repeat pass at exit
+        # touches already-closed state and emits swallowed errors that mask
+        # real teardown issues.
+        _session_shutdown_done[] && return
+        _session_shutdown_done[] = true
+        try
+            _autopilot_stop!()
+        catch e
+            @warn "Failed to stop autopilot cleanly during shutdown" exception=(e, catch_backtrace())
+        end
         try
             BYTE._db_end_session(BYTE._session_id)
         catch err
@@ -555,6 +623,13 @@ function app_main(; host::String=get(ENV, "SPARKBYTE_HOST", DEFAULT_HOST),
     engine_ref = Ref(engine)
     start_a2a_server(db; engine_ref=engine_ref)
     public_a2a_handler = req -> handle_public_a2a_request(req, db; engine_ref=engine_ref)
+
+    # SparkByte's own autonomous heartbeat — default OFF, opt-in via
+    # SPARKBYTE_AUTOPILOT_SECONDS.  Broadcasts autopilot_queued →
+    # autopilot_thinking → autopilot_acted over the UI WebSocket so the queue
+    # chip and thought bubble light up live.  Shares engine_ref with the A2A
+    # server so she can reflect on her actual working state.
+    _autopilot_start!(engine_ref, db, root)
 
     if launch_browser
         @async try

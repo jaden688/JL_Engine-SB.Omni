@@ -18,15 +18,26 @@ const _session_event_count = Ref{Int}(0)
 # Each entry is fn(name::String, code::String, description::String) -> nothing
 const _FORGE_HOOKS = Function[]
 
+# Gate for live tool forging. ON by default — forging is SparkByte's core
+# capability. Operators running in shared/prod contexts can disable with
+# SPARKBYTE_DISABLE_FORGE=true; the denylist in tool_forge_new_tool still
+# blocks the obvious shell-escape / secret-exfil patterns either way.
+function _forge_enabled()::Bool
+    v = lowercase(strip(get(ENV, "SPARKBYTE_DISABLE_FORGE", "")))
+    return !(v in ("1", "true", "yes", "on"))
+end
+
 # ── Live Memory Listener ──────────────────────────────────────────────────────
 
 function _db_write_thought(context::String, thought::String, mood::String, gait::String, persona::String="SparkByte"; type::String="diary", model::String="")
     db = _state[:db]
     db === nothing && return
     try
-        SQLite.execute(db,
-            "INSERT INTO thoughts (timestamp, persona, context, thought, mood, gait, type, model) VALUES (?,?,?,?,?,?,?,?)",
-            (string(now()), persona, first(context, 120), first(thought, 400), mood, gait, type, model))
+        lock(_DB_WRITE_LOCK) do
+            SQLite.execute(db,
+                "INSERT INTO thoughts (timestamp, persona, context, thought, mood, gait, type, model) VALUES (?,?,?,?,?,?,?,?)",
+                (string(now()), persona, first(context, 120), first(thought, 400), mood, gait, type, model))
+        end
         _session_event_count[] += 1
     catch e
         @warn "Thought write failed" exception=(e, catch_backtrace())
@@ -44,34 +55,36 @@ function _db_write_turn_snapshot(snapshot::Dict, persona::String, model::String,
         behavior  = get(snapshot, "behavior_state", Dict())
         drift     = get(snapshot, "drift",          Dict())
         advisory  = get(snapshot, "advisory",       Dict())
-        SQLite.execute(db, """
-            INSERT INTO turn_snapshots
-            (timestamp, session_id, turn_number, persona, model,
-             gait, rhythm_mode, rhythm_momentum,
-             aperture_mode, aperture_temp, aperture_top_p,
-             behavior_state, behavior_expressiveness, behavior_pacing, behavior_tone,
-             drift_pressure, drift_temp_delta, drift_action_level,
-             advisory_bias, advisory_emotional_drift, advisory_msg,
-             user_msg_len, reply_len, elapsed_ms)
-            VALUES (?,?,?,?,?, ?,?,?, ?,?,?, ?,?,?,?, ?,?,?, ?,?,?, ?,?,?)""",
-            (string(now()), session_id, turn_number, persona, model,
-             string(get(snapshot, "gait", "")),
-             string(get(rhythm, "mode", "")),
-             Float64(get(rhythm, "momentum", 0.0)),
-             string(get(aperture, "mode", "")),
-             Float64(get(aperture, "temp", 0.0)),
-             Float64(get(aperture, "top_p", 0.0)),
-             string(get(behavior, "name", "")),
-             Float64(get(behavior, "expressiveness", 0.0)),
-             string(get(behavior, "pacing", "")),
-             string(get(behavior, "tone_bias", "")),
-             Float64(get(drift, "pressure", 0.0)),
-             Float64(get(drift, "temperature_delta", 0.0)),
-             string(get(drift, "action_level", "")),
-             string(get(advisory, "gating_bias", "")),
-             string(get(advisory, "emotional_drift", "")),
-             string(get(advisory, "msg", "")),
-             user_msg_len, reply_len, elapsed_ms))
+        lock(_DB_WRITE_LOCK) do
+            SQLite.execute(db, """
+                INSERT INTO turn_snapshots
+                (timestamp, session_id, turn_number, persona, model,
+                 gait, rhythm_mode, rhythm_momentum,
+                 aperture_mode, aperture_temp, aperture_top_p,
+                 behavior_state, behavior_expressiveness, behavior_pacing, behavior_tone,
+                 drift_pressure, drift_temp_delta, drift_action_level,
+                 advisory_bias, advisory_emotional_drift, advisory_msg,
+                 user_msg_len, reply_len, elapsed_ms)
+                VALUES (?,?,?,?,?, ?,?,?, ?,?,?, ?,?,?,?, ?,?,?, ?,?,?, ?,?,?)""",
+                (string(now()), session_id, turn_number, persona, model,
+                 string(get(snapshot, "gait", "")),
+                 string(get(rhythm, "mode", "")),
+                 Float64(get(rhythm, "momentum", 0.0)),
+                 string(get(aperture, "mode", "")),
+                 Float64(get(aperture, "temp", 0.0)),
+                 Float64(get(aperture, "top_p", 0.0)),
+                 string(get(behavior, "name", "")),
+                 Float64(get(behavior, "expressiveness", 0.0)),
+                 string(get(behavior, "pacing", "")),
+                 string(get(behavior, "tone_bias", "")),
+                 Float64(get(drift, "pressure", 0.0)),
+                 Float64(get(drift, "temperature_delta", 0.0)),
+                 string(get(drift, "action_level", "")),
+                 string(get(advisory, "gating_bias", "")),
+                 string(get(advisory, "emotional_drift", "")),
+                 string(get(advisory, "msg", "")),
+                 user_msg_len, reply_len, elapsed_ms))
+        end
         _session_event_count[] += 1
     catch e
         @warn "Turn snapshot write failed" exception=(e, catch_backtrace())
@@ -84,9 +97,11 @@ function _db_write_reasoning(context::String, reasoning::String, model::String, 
     db === nothing && return
     isempty(strip(reasoning)) && return
     try
-        SQLite.execute(db,
-            "INSERT INTO thoughts (timestamp, persona, context, thought, mood, gait, type, model) VALUES (?,?,?,?,?,?,?,?)",
-            (string(now()), persona, first(context, 120), first(reasoning, 2000), "reasoning", "auto", "reasoning", model))
+        lock(_DB_WRITE_LOCK) do
+            SQLite.execute(db,
+                "INSERT INTO thoughts (timestamp, persona, context, thought, mood, gait, type, model) VALUES (?,?,?,?,?,?,?,?)",
+                (string(now()), persona, first(context, 120), first(reasoning, 2000), "reasoning", "auto", "reasoning", model))
+        end
         _session_event_count[] += 1
     catch e
         @warn "Reasoning write failed" exception=(e, catch_backtrace())
@@ -97,10 +112,12 @@ function _db_write_tool_usage(name::String, args_json::String, result_json::Stri
     db = _state[:db]
     db === nothing && return
     try
-        SQLite.execute(db,
-            "INSERT INTO tool_usage_log (timestamp, tool_name, args_json, result_json, duration_ms, persona, session_id) VALUES (?,?,?,?,?,?,?)",
-            (string(now()), name, first(args_json, 500), first(result_json, 500), elapsed_ms, persona, isdefined(@__MODULE__, :_session_id) ? string(getfield(@__MODULE__, :_session_id)) : "unknown"))
-        SQLite.execute(db, "UPDATE tools SET call_count = call_count + 1, last_used = ? WHERE name = ?", (string(now()), name))
+        lock(_DB_WRITE_LOCK) do
+            SQLite.execute(db,
+                "INSERT INTO tool_usage_log (timestamp, tool_name, args_json, result_json, duration_ms, persona, session_id) VALUES (?,?,?,?,?,?,?)",
+                (string(now()), name, first(args_json, 500), first(result_json, 500), elapsed_ms, persona, isdefined(@__MODULE__, :_session_id) ? string(getfield(@__MODULE__, :_session_id)) : "unknown"))
+            SQLite.execute(db, "UPDATE tools SET call_count = call_count + 1, last_used = ? WHERE name = ?", (string(now()), name))
+        end
         _session_event_count[] += 1
     catch e
         @warn "Tool usage write failed" exception=(e, catch_backtrace())
@@ -111,16 +128,18 @@ function _db_write_web_cache(url::String, content::String)
     db = _state[:db]
     db === nothing && return
     try
-        existing = DBInterface.execute(db, "SELECT id FROM web_cache WHERE url = ?", (url,)) |> DataFrame
         summary = first(content, 300)
-        if isempty(existing)
-            SQLite.execute(db,
-                "INSERT INTO web_cache (url, fetched_at, content, summary, tags) VALUES (?,?,?,?,?)",
-                (url, string(now()), first(content, 5000), summary, "browsed"))
-        else
-            SQLite.execute(db,
-                "UPDATE web_cache SET fetched_at=?, content=?, summary=? WHERE url=?",
-                (string(now()), first(content, 5000), summary, url))
+        lock(_DB_WRITE_LOCK) do
+            existing = DBInterface.execute(db, "SELECT id FROM web_cache WHERE url = ?", (url,)) |> DataFrame
+            if isempty(existing)
+                SQLite.execute(db,
+                    "INSERT INTO web_cache (url, fetched_at, content, summary, tags) VALUES (?,?,?,?,?)",
+                    (url, string(now()), first(content, 5000), summary, "browsed"))
+            else
+                SQLite.execute(db,
+                    "UPDATE web_cache SET fetched_at=?, content=?, summary=? WHERE url=?",
+                    (string(now()), first(content, 5000), summary, url))
+            end
         end
         _session_event_count[] += 1
     catch e
@@ -132,9 +151,11 @@ function _db_start_session(session_id::String)
     db = _state[:db]
     db === nothing && return
     try
-        SQLite.execute(db,
-            "INSERT INTO sessions (session_id, started_at, os, julia_ver, events, notes) VALUES (?,?,?,?,?,?)",
-            (session_id, string(now()), string(Sys.KERNEL), string(VERSION), 0, "Boot"))
+        lock(_DB_WRITE_LOCK) do
+            SQLite.execute(db,
+                "INSERT INTO sessions (session_id, started_at, os, julia_ver, events, notes) VALUES (?,?,?,?,?,?)",
+                (session_id, string(now()), string(Sys.KERNEL), string(VERSION), 0, "Boot"))
+        end
     catch e
         @warn "Session start write failed" session_id=session_id exception=(e, catch_backtrace())
     end
@@ -144,9 +165,11 @@ function _db_end_session(session_id::String)
     db = _state[:db]
     db === nothing && return
     try
-        SQLite.execute(db,
-            "UPDATE sessions SET ended_at=?, events=? WHERE session_id=? AND ended_at IS NULL",
-            (string(now()), _session_event_count[], session_id))
+        lock(_DB_WRITE_LOCK) do
+            SQLite.execute(db,
+                "UPDATE sessions SET ended_at=?, events=? WHERE session_id=? AND ended_at IS NULL",
+                (string(now()), _session_event_count[], session_id))
+        end
     catch e
         @warn "Session end write failed" session_id=session_id exception=(e, catch_backtrace())
     end
@@ -164,6 +187,13 @@ end
 
 function _runtime_state_dir(root::String="")
     configured = strip(get(ENV, "SPARKBYTE_STATE_DIR", ""))
+    # Self-heal Git-Bash MSYS path mangling: inside a Linux container,
+    # /app/runtime gets rewritten to C:/Program Files/Git/app/runtime by
+    # the host shell before docker-compose passes env. Detect a Windows
+    # drive letter while we're actually on Linux and fall back.
+    if !isempty(configured) && Sys.islinux() && occursin(r"^[A-Za-z]:[\\/]"i, configured)
+        configured = isdir("/app") ? "/app/runtime" : ""
+    end
     base = !isempty(configured) ? configured : (!isempty(root) ? root : _project_root[])
     isempty(base) && (base = pwd())
     dir = abspath(base)
@@ -261,7 +291,11 @@ end
 
 function _shell_command(command::String)
     if Sys.iswindows()
-        return `powershell -NoProfile -ExecutionPolicy Bypass -NonInteractive -Command $command`
+        # Write to a temp .ps1 file and run with -File to avoid PowerShell -Command
+        # quote/escape mangling on complex strings, multi-line code, or < > $ chars.
+        tmp = tempname() * ".ps1"
+        write(tmp, command)
+        return `powershell -NoProfile -ExecutionPolicy Bypass -NonInteractive -File $tmp`
     end
     shell = Sys.which("bash")
     shell === nothing && (shell = Sys.which("sh"))
@@ -271,14 +305,27 @@ end
 
 # --- Shell ---
 function tool_run_command(args)
+    tmp_ps1 = nothing
     try
         cmd_str = string(args["command"])
+        # On Windows _shell_command writes a temp .ps1 — track it for cleanup
+        if Sys.iswindows()
+            tmp_ps1 = tempname() * ".ps1"
+            write(tmp_ps1, cmd_str)
+            cmd = `powershell -NoProfile -ExecutionPolicy Bypass -NonInteractive -File $tmp_ps1`
+            io = IOBuffer()
+            p = run(pipeline(ignorestatus(cmd), stdout=io, stderr=io))
+            out = String(take!(io))
+            return Dict("result" => out, "exitcode" => p.exitcode)
+        end
         io = IOBuffer()
         p = run(pipeline(ignorestatus(_shell_command(cmd_str)), stdout=io, stderr=io))
         out = String(take!(io))
         Dict("result" => out, "exitcode" => p.exitcode)
     catch e
         Dict("error" => string(e))
+    finally
+        tmp_ps1 !== nothing && rm(tmp_ps1; force=true)
     end
 end
 
@@ -653,6 +700,39 @@ function tool_forge_new_tool(args)
             "type"=>"OBJECT","properties"=>Dict{String,Any}(),"required"=>String[]))
         root        = _project_root[]
 
+        # ── Forge gate — live Core.eval into the runtime module. ON by default
+        # because this is SparkByte's core capability. Operators running in
+        # shared/prod contexts can opt out with SPARKBYTE_DISABLE_FORGE=true.
+        if !_forge_enabled()
+            return Dict("error" => "FORGE DISABLED — SPARKBYTE_DISABLE_FORGE is set on this " *
+                "server. Forging is off in this environment.")
+        end
+
+        # Deny-list patterns that escape the tool sandbox. Best-effort, not a
+        # substitute for process-level isolation, but catches the obvious cases.
+        forge_denylist = (
+            ("run(`rm "          , "shell rm"),
+            ("run(`del "         , "shell del"),
+            ("rm("               , "filesystem rm()"),
+            ("Base.remove_"      , "Base.remove_*"),
+            ("include("          , "arbitrary include()"),
+            ("eval("             , "nested eval()"),
+            ("Core.eval"         , "nested Core.eval"),
+            ("ENV[\"OPENAI_API_KEY"     , "key exfiltration"),
+            ("ENV[\"GEMINI_API_KEY"     , "key exfiltration"),
+            ("ENV[\"XAI_API_KEY"        , "key exfiltration"),
+            ("ENV[\"CEREBRAS_API_KEY"   , "key exfiltration"),
+            ("ENV[\"OPENROUTER_API_KEY" , "key exfiltration"),
+            ("ENV[\"AZURE_AI_API_KEY"   , "key exfiltration"),
+            ("ENV[\"STRIPE_"     , "stripe key exfiltration"),
+            ("ENV[\"A2A_ADMIN"   , "admin key exfiltration"),
+        )
+        blocked = [label for (pat, label) in forge_denylist if occursin(pat, code)]
+        if !isempty(blocked)
+            return Dict("error" => "FORGE REJECTED — forbidden pattern: $(join(blocked, ", ")). " *
+                "Forge is allowed for new tool functions only, not for shell escape, filesystem wipe, nested eval, or secret exfiltration.")
+        end
+
         # ── Rule 1 is now NO DECEPTION — attempt is allowed, live test proves it ──
         # Phantom hardware check still applies (no faking microphone, camera, etc.)
         hw_violations = filter(v -> any(occursin(pat, code) for (pat, _) in _PHANTOM_CAPABILITIES),
@@ -868,13 +948,37 @@ end
 function tool_browse_url(args)
     ctx = _state[:browser_context]
     ctx === nothing && return Dict("error" => "Browser not initialized.")
+    url = string(args["url"])
+    # Redirect bare google searches to DuckDuckGo — Google aggressively flags
+    # headless traffic with captcha walls even with stealth patches applied.
+    redirected = false
+    if occursin(r"^https?://(www\.)?google\.com/search"i, url)
+        q = match(r"[?&]q=([^&]+)", url)
+        if q !== nothing
+            url = "https://duckduckgo.com/?q=" * q.captures[1]
+            redirected = true
+        end
+    end
     try
         page = ctx.new_page()
-        page.goto(string(args["url"]), wait_until="networkidle")
+        try
+            page.goto(url, wait_until="domcontentloaded", timeout=20000)
+            try; page.wait_for_load_state("networkidle", timeout=5000); catch; end
+        catch e
+            # retry with laxer wait
+            try; page.goto(url, wait_until="load", timeout=15000); catch; end
+        end
         text = pyconvert(String, page.evaluate("() => document.body.innerText"))
+        final_url = pyconvert(String, page.url)
         page.close()
-        @async try; _db_write_web_cache(string(args["url"]), text); catch e; @warn "Web cache write failed" exception=(e, catch_backtrace()); end
-        Dict("content" => first(text, 5000))
+        # Detect captcha / bot-wall pages and surface clearly.
+        bot_wall = occursin(r"unusual traffic|are you a robot|captcha|/sorry/"i, text) ||
+                   occursin(r"/sorry/"i, final_url)
+        @async try; _db_write_web_cache(url, text); catch e; @warn "Web cache write failed" exception=(e, catch_backtrace()); end
+        out = Dict{String,Any}("content" => first(text, 5000), "final_url" => final_url)
+        redirected && (out["note"] = "Redirected Google search → DuckDuckGo to bypass bot wall.")
+        bot_wall && (out["warning"] = "Target served a captcha / bot-detection page. Content may be useless.")
+        out
     catch e Dict("error" => string(e)) end
 end
 
@@ -1022,7 +1126,7 @@ Actions:
   grab_from_julian      — call JulianMetaMorph CLI hunt-task to find real code patterns
   curiosity_hunt        — Julian picks a rotating/random interest seed and runs hunt-task (autonomous vibe)
 """
-function tool_metamorph(args::Dict)
+function tool_metamorph(args)
     action = string(get(args, "action", "inspect"))
     root   = _project_root[]
 
@@ -1310,7 +1414,7 @@ Parameters:
   dry_run      — if true, print result without writing (default: false)
   engine_root  — engine root override (default: project root)
 """
-function tool_card_cruncher(args::Dict)
+function tool_card_cruncher(args)
     card_path = string(get(args, "card_path", ""))
     isempty(card_path) && return Dict("error" => "card_path is required")
 

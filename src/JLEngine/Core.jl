@@ -272,8 +272,6 @@ function _build_messages(engine::JLEngineCore, user_text::AbstractString, snapsh
     end
     push!(lines, "")
     push!(lines, "ACTIVE PERSONA: $(get(projection, "name", engine.current_persona_name))")
-    base_prompt = get(projection, "base_prompt", "")
-    base_prompt isa AbstractString && !isempty(base_prompt) && push!(lines, String(base_prompt))
     push!(lines, "")
     push!(lines, "ENGINE STATE SNAPSHOT:")
     push!(lines, "- Gait: $(get(snapshot, "gait", engine.current_gait))")

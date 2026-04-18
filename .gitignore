@@ -3,6 +3,12 @@
 secret.mystic
 .azure-cli/
 .azure/
+.pg_admin_password.secret
+.pg_connection_string.secret
+
+# Local Azure state dumps (not secrets, but noisy + contain account info)
+ca-current.yaml
+sb_reply.json
 
 # Database
 *.db

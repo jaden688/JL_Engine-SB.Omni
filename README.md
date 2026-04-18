@@ -279,6 +279,8 @@ $env:SPARKBYTE_PORT   = "8081"
 $env:SPARKBYTE_HOST   = "127.0.0.1"   # or 0.0.0.0 for Docker
 $env:GEMINI_API_KEY   = "..."
 $env:OPENAI_API_KEY   = "..."
+$env:SPARKBYTE_TTS_ENABLED = "1"
+$env:SPARKBYTE_TTS_VOICE = "cedar"
 $env:XAI_API_KEY      = "..."
 ```
 

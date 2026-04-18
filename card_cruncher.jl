@@ -532,7 +532,7 @@ end
 # ─────────────────────────────────────────────
 
 BYTE_TOOL_SOURCE = raw"""
-function tool_card_cruncher(args::Dict)
+function tool_card_cruncher(args)
     card_path = get(args, "card_path", "")
     isempty(card_path) && return Dict("error" => "card_path is required")
 

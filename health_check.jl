@@ -16,6 +16,9 @@ import Dates: now
 
 function _health_state_dir()
     configured = strip(get(ENV, "SPARKBYTE_STATE_DIR", ""))
+    if !isempty(configured) && Sys.islinux() && occursin(r"^[A-Za-z]:[\\/]"i, configured)
+        configured = isdir("/app") ? "/app/runtime" : ""
+    end
     dir = if isempty(configured)
         @__DIR__
     else

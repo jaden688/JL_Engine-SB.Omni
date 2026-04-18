@@ -6,6 +6,7 @@ include("UI.jl")
 include("Schema.jl")
 include("Tools.jl")
 include("Telemetry.jl")
+include("TTS.jl")
 
 export init, serve, launch, process_message,
        get_current_model, set_current_model!, get_provider_for_model,
@@ -45,6 +46,17 @@ const _WS_RUNTIME_STATE_LOCK = ReentrantLock()
 # Confirmation flag and pending store
 const REQUIRE_CONFIRM = Ref(false)  # UI can confirm tool runs, but keep opt-in until we want approval gates
 const _pending_confirms = Dict{String,Dict{String,Any}}()  # id => {fn, args}
+const _pending_confirms_lock = ReentrantLock()
+
+# Serialize all SQLite writes — SQLite.jl is not task-safe under @async, and
+# Julia ≥1.9 can hop tasks across threads. Every writer (request handler,
+# autopilot, TTS, telemetry) must go through _db_write! to avoid corrupt state.
+const _DB_WRITE_LOCK = ReentrantLock()
+function _db_write!(f::Function)
+    lock(_DB_WRITE_LOCK) do
+        f()
+    end
+end
 const _BACKEND_PROBE_LOCK = ReentrantLock()
 const _BACKEND_PROBE_CACHE = Ref(Dict{String,Any}())
 const _BACKEND_PROBE_CACHE_AT = Ref(0.0)
@@ -220,9 +232,9 @@ const PROVIDER_PROFILES = Dict{String,Dict{String,Any}}(
 # ── Model → provider routing (module-level) ──────────────────────────────────
 const _XAI_RESPONSES_MODELS_SET = Set(["grok-4.20-multi-agent-0309", "grok-4.20-reasoning"])
 const _CEREBRAS_MODELS_SET = Set([
-    "llama-4-scout-17b-16e-instruct", "llama-4-maverick-17b-128e-instruct",
-    "llama3.3-70b", "llama3.1-70b", "llama3.1-8b",
-    "qwen-3-32b", "gpt-oss-120b", "gpt-oss-70b",
+    "gpt-oss-120b",
+    "zai-glm-4.7",
+    "llama3.1-8b",
     "qwen-3-235b-a22b-instruct-2507",
 ])
 
@@ -270,18 +282,67 @@ end
 const _WS_CLIENTS      = Dict{UInt64, Any}()   # objectid(ws) => ws
 const _WS_CLIENTS_LOCK = ReentrantLock()
 
-function _broadcast(msg::Dict)
-    json_str = JSON.json(msg)
-    lock(_WS_CLIENTS_LOCK) do
-        dead = UInt64[]
-        for (id, ws) in _WS_CLIENTS
-            try
-                WebSockets.send(ws, json_str)
-            catch
-                push!(dead, id)
+# ── WS origin allowlist — prevents cross-site WebSocket hijack ────────────────
+# Browsers always send Origin on WS handshakes. Non-browser clients (curl, A2A,
+# scripts) don't send Origin and are allowed through. Configure extras via
+# SPARKBYTE_WS_ALLOWED_ORIGINS="https://app.example.com,https://other.example".
+function _ws_origin_allowed(req, host::String, port::Int)::Bool
+    origin = ""
+    for h in req.headers
+        if lowercase(h[1]) == "origin"
+            origin = h[2]
+            break
+        end
+    end
+    isempty(origin) && return true   # non-browser caller — no Origin set
+    try
+        uri = HTTP.URI(origin)
+        h = uri.host
+        p = isempty(uri.port) ? (uri.scheme == "https" ? 443 : 80) : parse(Int, uri.port)
+        # Same-host match
+        if h in ("localhost", "127.0.0.1", "0.0.0.0", host) && (p == port)
+            return true
+        end
+        # Allow loopback on any port when bound to loopback
+        if host in ("127.0.0.1", "localhost") && h in ("localhost", "127.0.0.1")
+            return true
+        end
+        extras = strip(get(ENV, "SPARKBYTE_WS_ALLOWED_ORIGINS", ""))
+        if !isempty(extras)
+            for entry in split(extras, ",")
+                entry = strip(entry)
+                isempty(entry) && continue
+                if origin == entry || startswith(origin, entry)
+                    return true
+                end
             end
         end
-        for id in dead; delete!(_WS_CLIENTS, id); end
+    catch
+        return false
+    end
+    @warn "Rejecting WS upgrade with disallowed Origin" origin=origin
+    return false
+end
+
+function _broadcast(msg::Dict)
+    json_str = JSON.json(msg)
+    # Snapshot under lock, then send without holding it — a slow/dead socket
+    # must not block other broadcasts or new-connection registration.
+    snapshot = lock(_WS_CLIENTS_LOCK) do
+        collect(pairs(_WS_CLIENTS))
+    end
+    dead = UInt64[]
+    for (id, ws) in snapshot
+        try
+            WebSockets.send(ws, json_str)
+        catch
+            push!(dead, id)
+        end
+    end
+    if !isempty(dead)
+        lock(_WS_CLIENTS_LOCK) do
+            for id in dead; delete!(_WS_CLIENTS, id); end
+        end
     end
 end
 
@@ -507,13 +568,13 @@ function _probe_backends_live()
         set_provider("cerebras"; ok=(st == 200), status=st, reason=_probe_reason(st, err), checked=true, has_key=true)
 
         qwen_payload = JSON.json(Dict(
-            "model" => "qwen-3-32b",
+            "model" => "qwen-3-235b-a22b-instruct-2507",
             "messages" => Any[Dict("role" => "user", "content" => "ping")],
             "max_tokens" => 16,
         ))
         st_qwen, err_qwen = _probe_http_status("https://api.cerebras.ai/v1/chat/completions"; method="POST",
             headers=cerebras_headers, body=qwen_payload)
-        set_model("qwen-3-32b"; ok=(st_qwen == 200), status=st_qwen,
+        set_model("qwen-3-235b-a22b-instruct-2507"; ok=(st_qwen == 200), status=st_qwen,
             reason=_probe_reason(st_qwen, err_qwen), provider="cerebras")
     end
 
@@ -953,6 +1014,15 @@ function _handle_builder_cmd(ws, p)
             )
         end
         _ws_send(ws, JSON.json(Dict("type"=>"settings_all_status", "keys"=>statuses)))
+        _ws_send(ws, JSON.json(Dict(
+            "type" => "settings_tts_status",
+            "tts" => Dict(
+                "enabled" => _tts_enabled(),
+                "voice" => _tts_voice(),
+                "model" => _tts_model(),
+                "ready" => _tts_enabled() && !isempty(strip(get(ENV, "OPENAI_API_KEY", ""))),
+            ),
+        )))
 
     elseif cmd == "save_settings"
         # Collect all keys being saved this call
@@ -962,10 +1032,26 @@ function _handle_builder_cmd(ws, p)
             "OPENAI_API_KEY"   => get(p, "openai_api_key", ""),
             "CEREBRAS_API_KEY" => get(p, "cerebras_api_key", ""),
         )
+        tts_map = Dict(
+            "SPARKBYTE_TTS_ENABLED" => haskey(p, "tts_enabled") ? (Bool(get(p, "tts_enabled", false)) ? "1" : "0") : "",
+            "SPARKBYTE_TTS_VOICE"    => string(get(p, "tts_voice", "")),
+        )
         saved = String[]
         env_path = joinpath(root, ".env")
         lines = isfile(env_path) ? readlines(env_path) : String[]
         for (env_name, val) in key_map
+            isempty(val) && continue
+            ENV[env_name] = val
+            found = false
+            for (i, line) in enumerate(lines)
+                if startswith(strip(line), "$env_name=")
+                    lines[i] = "$env_name=$val"; found = true; break
+                end
+            end
+            !found && push!(lines, "$env_name=$val")
+            push!(saved, env_name)
+        end
+        for (env_name, val) in tts_map
             isempty(val) && continue
             ENV[env_name] = val
             found = false
@@ -996,6 +1082,15 @@ function _handle_builder_cmd(ws, p)
                     v[1:min(4,length(v))] * "…" * v[max(1,length(v)-3):end])
         end
         _ws_send(ws, JSON.json(Dict("type"=>"settings_all_status", "keys"=>statuses)))
+        _ws_send(ws, JSON.json(Dict(
+            "type" => "settings_tts_status",
+            "tts" => Dict(
+                "enabled" => _tts_enabled(),
+                "voice" => _tts_voice(),
+                "model" => _tts_model(),
+                "ready" => _tts_enabled() && !isempty(strip(get(ENV, "OPENAI_API_KEY", ""))),
+            ),
+        )))
         probe = _get_backend_probe(force=true)
         _ws_send(ws, JSON.json(Dict(
             "type" => "backend_probe",
@@ -1042,10 +1137,16 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
     # --- Confirmation response handling ---
     if get(p, "type", "") == "confirm_response"
         cid = get(p, "id", "")
-        answer = Bool(p["answer"])
-        if haskey(_pending_confirms, cid)
-            pending = _pending_confirms[cid]
-            delete!(_pending_confirms, cid)
+        # H-08: coerce flexibly — "true"/"yes"/"1"/true all count as approval
+        raw_ans = get(p, "answer", false)
+        answer  = raw_ans === true ||
+                  (raw_ans isa AbstractString && lowercase(strip(raw_ans)) in ("true","yes","1","y"))
+        pending = lock(_pending_confirms_lock) do
+            p = get(_pending_confirms, cid, nothing)
+            p !== nothing && delete!(_pending_confirms, cid)
+            p
+        end
+        if pending !== nothing
             if answer
                 fn = pending["fn"]
                 args = pending["args"]
@@ -1301,8 +1402,11 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
         prov = get_provider_for_model(model)
         prof = get_provider_profile(prov)
         ek   = get(prof, "env_key", "")
-        if isempty(ek)
-            return prov == "ollama"
+        if prov == "ollama"
+            probe = _get_backend_probe()
+            providers = get(probe, "providers", Dict{String,Any}())
+            ollama = get(providers, "ollama", Dict{String,Any}())
+            return Bool(get(ollama, "ok", false))
         end
         ready = !isempty(strip(get(ENV, ek, "")))
         if prov == "azure"
@@ -1548,6 +1652,10 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
             "content"=> has_cur_img ? cur_blocks : txt))
     end
 
+    # H-04: hoist input_msgs above the while loop — xAI Responses path mutates
+    # it in place on iters 2+, and it must survive across iterations.
+    input_msgs = Any[]
+
     while true
         if _abort_generation_if_requested!(ws)
             break
@@ -1641,7 +1749,8 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                 m = cand["content"]; finish_reason = get(cand,"finishReason","UNKNOWN")
                 push!(history, m)
                 has_tool = false
-                for part in m["parts"]
+                parts_arr = something(get(m, "parts", nothing), Any[])
+                for part in parts_arr
                     if _abort_generation_if_requested!(ws)
                         has_tool = false
                         break
@@ -1671,11 +1780,18 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                         # Confirmation step
                         if REQUIRE_CONFIRM[]
                             cid = string(uuid4())
-                            _pending_confirms[cid] = Dict("fn"=>c["name"], "args"=>args)
+                            lock(_pending_confirms_lock) do
+                                _pending_confirms[cid] = Dict("fn"=>c["name"], "args"=>args)
+                            end
                             _ws_send(ws, JSON.json(Dict("type"=>"confirm","id"=>cid,
                                 "text"=>"⚠️ Run tool **$(c["name"])** with args $(JSON.json(args))?")))
-                            # Skip actual execution now – will resume on confirm_response
-                            continue
+                            # H-03: append synthetic tool result so the next iter has a valid
+                            # functionResponse pair — prevents the wedge when user confirms later.
+                            push!(history, Dict("role"=>"function","parts"=>[Dict(
+                                "functionResponse"=>Dict("name"=>c["name"],
+                                    "response"=>Dict("content"=>Dict("status"=>"awaiting_user_confirmation"))))]))
+                            has_tool = false  # break the while loop; resume on confirm_response
+                            break
                         end
                         if _abort_generation_if_requested!(ws)
                             has_tool = false
@@ -1714,8 +1830,8 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
 
                 # Build input messages array (carries history across loop iterations)
                 if loop_iter == 1
-                    # First iteration — build full history
-                    input_msgs = Any[]
+                    # First iteration — build full history (empty!() first to handle retries)
+                    empty!(input_msgs)
                     for h in history
                         h_role = get(h,"role","user") == "model" ? "assistant" : "user"
                         blocks = Any[]
@@ -1851,15 +1967,25 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                     # Confirmation step
                     if REQUIRE_CONFIRM[]
                         cid = string(uuid4())
-                        _pending_confirms[cid] = Dict("fn"=>fn_name, "args"=>args_parsed)
-                            _ws_send(ws, JSON.json(Dict("type"=>"confirm","id"=>cid,
-                                "text"=>"⚠️ Run tool **$fn_name** with args $(JSON.json(args_parsed))?")))
-                            continue
+                        lock(_pending_confirms_lock) do
+                            _pending_confirms[cid] = Dict("fn"=>fn_name, "args"=>args_parsed)
                         end
-                        if _abort_generation_if_requested!(ws)
-                            xai_tool_calls = Any[]
-                            break
-                        end
+                        _ws_send(ws, JSON.json(Dict("type"=>"confirm","id"=>cid,
+                            "text"=>"⚠️ Run tool **$fn_name** with args $(JSON.json(args_parsed))?")))
+                        # H-03: append synthetic function_call_output so the Responses API
+                        # has a matched pair for this call_id — avoids a 400 on next iter.
+                        push!(input_msgs, Dict(
+                            "type"    => "function_call_output",
+                            "call_id" => call_id,
+                            "output"  => JSON.json(Dict("status"=>"awaiting_user_confirmation")),
+                        ))
+                        xai_tool_calls = Any[]
+                        break
+                    end
+                    if _abort_generation_if_requested!(ws)
+                        xai_tool_calls = Any[]
+                        break
+                    end
                     result_dict, _elapsed_xai = _execute_tool_call(ws, engine, fn_name, args_parsed; loop_iter=loop_iter)
                     if _abort_generation_if_requested!(ws)
                         xai_tool_calls = Any[]
@@ -1949,15 +2075,22 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                     # Confirmation step
                     if REQUIRE_CONFIRM[]
                         cid = string(uuid4())
-                        _pending_confirms[cid] = Dict("fn"=>tc_name, "args"=>tc_args)
-                            _ws_send(ws, JSON.json(Dict("type"=>"confirm","id"=>cid,
-                                "text"=>"⚠️ Run tool **$tc_name** with args $(JSON.json(tc_args))?")))
-                            continue
+                        lock(_pending_confirms_lock) do
+                            _pending_confirms[cid] = Dict("fn"=>tc_name, "args"=>tc_args)
                         end
-                        if _abort_generation_if_requested!(ws)
-                            has_tool = false
-                            break
-                        end
+                        _ws_send(ws, JSON.json(Dict("type"=>"confirm","id"=>cid,
+                            "text"=>"⚠️ Run tool **$tc_name** with args $(JSON.json(tc_args))?")))
+                        # H-03: append synthetic tool result so OAI has a matched pair for
+                        # this tool_call_id — without this the next iter 400s.
+                        push!(oai_messages, Dict("role"=>"tool","tool_call_id"=>tc_id,
+                            "content"=>JSON.json(Dict("status"=>"awaiting_user_confirmation"))))
+                        has_tool = false
+                        break
+                    end
+                    if _abort_generation_if_requested!(ws)
+                        has_tool = false
+                        break
+                    end
                     res, elapsed = _execute_tool_call(ws, engine, tc_name, tc_args; loop_iter=loop_iter)
                     last_tool_name_used = tc_name; last_tool_elapsed_used = elapsed
                     if _abort_generation_if_requested!(ws)
@@ -1984,7 +2117,26 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
 
         catch e
             bt  = sprint(showerror, e, catch_backtrace())
-            msg = "FAILURE: $(first(_redact_sensitive_text(e), 300))"
+            # Classify: backend auth/route failures get a clean message, not raw HTTP dump.
+            msg = if e isa HTTP.Exceptions.StatusError
+                status = e.status
+                prov   = string(provider)
+                modl   = string(_current_model)
+                if status == 401 || status == 403
+                    "⚠️ Backend **$prov** rejected the request for model `$modl` (HTTP $status — auth failed). " *
+                    "The API key is missing, revoked, or out of quota. Switch models from the dropdown, or update the key in Settings."
+                elseif status == 404
+                    "⚠️ Model `$modl` not available on backend **$prov** (HTTP 404). Pick a different model from the dropdown."
+                elseif status == 429
+                    "⚠️ Backend **$prov** rate-limited this request (HTTP 429). Try again in a moment or switch models."
+                elseif status >= 500
+                    "⚠️ Backend **$prov** is having issues (HTTP $status). Try again or switch models."
+                else
+                    "⚠️ Backend **$prov** returned HTTP $status for model `$modl`. Switching models may help."
+                end
+            else
+                "FAILURE: $(first(_redact_sensitive_text(e), 300))"
+            end
             out = Dict("type"=>"spark", "text"=>msg)
             _ws_send(ws, JSON.json(out)); log_ws_message_out(out)
             log_error("api_loop:iter_$loop_iter", e; stacktrace_str=bt)
@@ -1996,6 +2148,13 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
     !isempty(final_reply) && Main.JLEngine.record_turn!(engine, txt, final_reply; snapshot=snapshot)
     elapsed_total = round(Int, datetime2unix(now()) * 1000) - turn_start_ms
     log_turn_complete(txt, length(final_reply), loop_iter, elapsed_total)
+    if !isempty(strip(final_reply))
+        try
+            _queue_tts_reply!(ws, final_reply; turn_id=loop_iter, model=_tts_model(), voice=_tts_voice())
+        catch e
+            @warn "Failed to queue TTS reply" exception=(e, catch_backtrace())
+        end
+    end
 
     # Telemetry broadcast — drives the live panel in the UI
     try
@@ -2034,9 +2193,13 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
         _db_write_thought(first(txt, 80), thought, mood, gait, persona)
         # Flush live event count to sessions table — survives force kills
         db = _state[:db]
-        db !== nothing && SQLite.execute(db,
-            "UPDATE sessions SET events=? WHERE session_id=? AND ended_at IS NULL",
-            (_session_event_count[], _session_id))
+        if db !== nothing
+            lock(_DB_WRITE_LOCK) do
+                SQLite.execute(db,
+                    "UPDATE sessions SET events=? WHERE session_id=? AND ended_at IS NULL",
+                    (_session_event_count[], _session_id))
+            end
+        end
     catch e
         @warn "Failed to persist live thought snapshot" exception=(e, catch_backtrace())
     end
@@ -2087,6 +2250,15 @@ function serve(engine; host::String="127.0.0.1", port::Int=8081, extra_http_hand
     _db_start_session(_session_id)
     HTTP.serve(host, port, stream=true) do stream
         if HTTP.WebSockets.isupgrade(stream.message)
+            # Origin check — refuse cross-site WS upgrades. Browsers send Origin
+            # on WebSocket handshakes; non-browser clients (our A2A, curl) don't.
+            # Allowlist: same-host HTTP(S) and explicit extras via SPARKBYTE_WS_ALLOWED_ORIGINS.
+            if !_ws_origin_allowed(stream.message, host, port)
+                HTTP.setstatus(stream, 403)
+                HTTP.startwrite(stream)
+                write(stream, "forbidden: origin not allowed")
+                return
+            end
             HTTP.WebSockets.upgrade(stream) do ws
                 cid = objectid(ws)
                 lock(_WS_CLIENTS_LOCK) do; _WS_CLIENTS[cid] = ws; end
@@ -2138,6 +2310,11 @@ function serve(engine; host::String="127.0.0.1", port::Int=8081, extra_http_hand
                         wait(worker)
                     catch e
                         @warn "WS worker shutdown error" exception=(e, catch_backtrace())
+                    end
+                    try
+                        _stop_tts_for_ws!(ws)
+                    catch e
+                        @warn "TTS worker shutdown error" exception=(e, catch_backtrace())
                     end
                 end
                 lock(_WS_CLIENTS_LOCK) do; delete!(_WS_CLIENTS, cid); end

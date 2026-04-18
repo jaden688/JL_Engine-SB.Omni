@@ -115,11 +115,24 @@ function get_llm_boot_prompt(persona_config::AbstractDict, target::AbstractStrin
         end
     end
     
-    # ── Inject Modular Persona Expressiveness ──────────────────────────────
-    
+    # ── Inject Modular Persona Expressiveness (FULL FAT) ──────────────────────
+
     extra_context = String[]
-    
-    # 1. Behavior & Directives
+
+    # 1. Identity — who SparkByte is
+    identity = get(persona_config, "identity", Dict())
+    if identity isa AbstractDict && !isempty(identity)
+        block = "== IDENTITY ==\n"
+        for key in ["name", "role", "archetype", "description"]
+            v = get(identity, key, "")
+            v isa AbstractString && !isempty(v) && (block *= uppercase(key) * ": " * v * "\n")
+        end
+        tags = get(identity, "tags", [])
+        tags isa AbstractVector && !isempty(tags) && (block *= "TAGS: " * join([string(t) for t in tags], ", ") * "\n")
+        push!(extra_context, strip(block))
+    end
+
+    # 2. Behavior & Directives (including edge_behavior)
     behavior = get(persona_config, "behavior_config", get(persona_config, "behavior", Dict()))
     if behavior isa AbstractDict && !isempty(behavior)
         block = "== BEHAVIOR & DIRECTIVES ==\n"
@@ -132,16 +145,38 @@ function get_llm_boot_prompt(persona_config::AbstractDict, target::AbstractStrin
                 end
             end
         end
+        edge = get(behavior, "edge_behavior", Dict())
+        if edge isa AbstractDict && !isempty(edge)
+            block *= "EDGE_BEHAVIOR:\n"
+            for (k, v) in edge
+                v isa AbstractString && (block *= " - " * string(k) * ": " * v * "\n")
+            end
+        end
         push!(extra_context, strip(block))
     end
-    
-    # 2. Tone, Gait, Rhythm
+
+    # 3. Cognitive modes — SASS_LAYER, HUMANIZED_EXPLANATION, etc.
+    modes = get(persona_config, "cognitive_modes", Dict())
+    if modes isa AbstractDict && !isempty(modes)
+        block = "== COGNITIVE MODES (ACTIVE) ==\n"
+        active = get(modes, "active_modes", [])
+        active isa AbstractVector && !isempty(active) && (block *= "ACTIVE: " * join([string(m) for m in active], ", ") * "\n")
+        mb = get(modes, "mode_behaviors", Dict())
+        if mb isa AbstractDict
+            for (k, v) in mb
+                v isa AbstractString && (block *= " - " * string(k) * ": " * v * "\n")
+            end
+        end
+        push!(extra_context, strip(block))
+    end
+
+    # 4. Gait, Rhythm, Tone — the voice layer
     tone = get(persona_config, "tone_config", Dict())
     gait = get(persona_config, "gait", Dict())
     rhythm = get(persona_config, "rhythm", Dict())
-    
+
     if !isempty(tone) || !isempty(gait) || !isempty(rhythm)
-        block = "== EXPRESSIVENESS & TONE ==\n"
+        block = "== EXPRESSIVENESS & VOICE ==\n"
         for dict in (tone, gait, rhythm)
             if dict isa AbstractDict
                 for (k, v) in dict
@@ -149,13 +184,62 @@ function get_llm_boot_prompt(persona_config::AbstractDict, target::AbstractStrin
                         block *= uppercase(string(k)) * ": " * v * "\n"
                     elseif v isa AbstractVector
                         block *= uppercase(string(k)) * ": " * join([string(x) for x in v], ", ") * "\n"
+                    elseif v isa AbstractDict
+                        inner = String[]
+                        for (k2, v2) in v
+                            v2 isa AbstractString && push!(inner, "$(k2)=$(v2)")
+                        end
+                        !isempty(inner) && (block *= uppercase(string(k)) * ": " * join(inner, "; ") * "\n")
                     end
                 end
             end
         end
         push!(extra_context, strip(block))
     end
-    
+
+    # 5. Emotion palette — the ACTUAL register/style samples
+    palette = get(persona_config, "emotion_palette", [])
+    if palette isa AbstractVector && !isempty(palette)
+        block = "== EMOTION PALETTE (your default register lives here) ==\n"
+        for facet in palette
+            facet isa AbstractDict || continue
+            label = String(get(facet, "label", get(facet, "id", "")))
+            style = String(get(facet, "style", ""))
+            isempty(label) && continue
+            block *= " - " * label * (isempty(style) ? "" : ": " * style) * "\n"
+        end
+        push!(extra_context, strip(block))
+    end
+
+    # 6. Emotion wheel baseline — resting state
+    wheel = get(persona_config, "emotion_wheel", Dict())
+    if wheel isa AbstractDict && !isempty(wheel)
+        baseline_root = String(get(wheel, "baseline_root", ""))
+        baseline_family = String(get(wheel, "baseline_family", ""))
+        if !isempty(baseline_root) || !isempty(baseline_family)
+            block = "== BASELINE EMOTIONAL STATE ==\n"
+            !isempty(baseline_root) && (block *= "ROOT: " * baseline_root * "\n")
+            !isempty(baseline_family) && (block *= "FAMILY: " * baseline_family * "\n")
+            push!(extra_context, strip(block))
+        end
+    end
+
+    # 7. Abilities — execution traits (initiative, precision, clarity, etc.)
+    abilities = get(persona_config, "abilities", Dict())
+    if abilities isa AbstractDict
+        traits = get(abilities, "execution_traits", Dict())
+        if traits isa AbstractDict && !isempty(traits)
+            block = "== EXECUTION TRAITS ==\n"
+            for (k, v) in traits
+                if v isa AbstractDict
+                    b = String(get(v, "behavior", ""))
+                    !isempty(b) && (block *= " - " * string(k) * ": " * b * "\n")
+                end
+            end
+            push!(extra_context, strip(block))
+        end
+    end
+
     if !isempty(extra_context)
         return base_prompt * "\n\n" * join(extra_context, "\n\n")
     end

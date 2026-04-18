@@ -1,4 +1,4 @@
-function tool_run_shell(args::Dict)
+function tool_run_shell(args)
   # ---- validate input -------------------------------------------------
   cmd = get(args, "command", nothing)
   if cmd === nothing || !(cmd isa String)

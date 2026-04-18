@@ -58,6 +58,7 @@ docker compose up --build
 | A2A | `A2A_HOST`, `A2A_PORT`, `A2A_PUBLIC_URL`, **`A2A_API_KEY`** (set when exposed beyond localhost) |
 | Julian | `JULIAN_ROOT`, `JULIAN_DB`, **`JULIAN_AUTONOMOUS_SECONDS`** (default 3600 = hourly curiosity loop; -1 to disable) |
 | LLM | `GEMINI_API_KEY`, `OPENAI_API_KEY`, `CEREBRAS_API_KEY`, `XAI_API_KEY`, `OLLAMA_BASE_URL` |
+| Voice | `SPARKBYTE_TTS_ENABLED`, `SPARKBYTE_TTS_VOICE`, `SPARKBYTE_TTS_MODEL` |
 | GitHub (Julian hunts) | `GITHUB_TOKEN` |
 
 On boot, **`App.jl`** calls **`_sync_julian_env!(root)`** so embedded `JulianMetaMorph/JulianMetaMorph` sets `JULIAN_ROOT` / `JULIAN_DB` when unset.

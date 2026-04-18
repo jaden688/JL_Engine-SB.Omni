@@ -21,6 +21,9 @@ const _turn_counter  = Ref{Int}(0)
 
 function _telemetry_root(project_root::String)
     configured = strip(get(ENV, "SPARKBYTE_STATE_DIR", ""))
+    if !isempty(configured) && Sys.islinux() && occursin(r"^[A-Za-z]:[\\/]"i, configured)
+        configured = isdir("/app") ? "/app/runtime" : ""
+    end
     root = isempty(configured) ? project_root : abspath(configured)
     mkpath(root)
     return root
@@ -81,9 +84,11 @@ function log_event(event::String, data::Dict{String,Any} = Dict{String,Any}())
         try
             model   = string(get(data, "model", ""))
             persona = string(get(data, "persona", ""))
-            SQLite.execute(_telem_db[],
-                "INSERT INTO telemetry (timestamp, session_id, event, turn_number, model, persona, data_json) VALUES (?,?,?,?,?,?,?)",
-                (ts, _session_id, event, Int(_turn_counter[]), model, persona, line))
+            lock(_DB_WRITE_LOCK) do
+                SQLite.execute(_telem_db[],
+                    "INSERT INTO telemetry (timestamp, session_id, event, turn_number, model, persona, data_json) VALUES (?,?,?,?,?,?,?)",
+                    (ts, _session_id, event, Int(_turn_counter[]), model, persona, line))
+            end
         catch e
             @warn "Telemetry SQLite write failed" event=event exception=(e, catch_backtrace())
         end

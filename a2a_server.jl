@@ -557,13 +557,20 @@ function _a2a_agent_card(public_url::AbstractString=A2A_PUBLIC_URL; authenticate
         card["securityRequirements"] = _a2a_auth_requirements()
     end
 
+    # ACP: advertise pricing + payment info so other agents (and ACP clients
+    # like ChatGPT Instant Checkout) can discover what it costs and where to pay.
+    if _a2a_commerce_configured()
+        card["pricing"] = _a2a_pricing_block()
+        card["payment"] = _a2a_payment_block()
+    end
+
     return card
 end
 
 function _a2a_legacy_agent_card(public_url::AbstractString=A2A_PUBLIC_URL)
     base_url = rstrip(strip(String(public_url)), '/')
     card = _a2a_agent_card(public_url)
-    return Dict(
+    legacy = Dict(
         "name" => card["name"],
         "description" => card["description"],
         "url" => base_url,
@@ -590,13 +597,21 @@ function _a2a_legacy_agent_card(public_url::AbstractString=A2A_PUBLIC_URL)
         "tool_count" => length(card["skills"]),
         "generated_at" => string(now(UTC)),
     )
+
+    # Mirror ACP pricing into legacy card too
+    if _a2a_commerce_configured()
+        legacy["pricing"] = _a2a_pricing_block()
+        legacy["payment"] = _a2a_payment_block()
+    end
+
+    return legacy
 end
 
 # ─────────────────────────────────────────────
 #  Auth
 # ─────────────────────────────────────────────
 
-function _check_auth(req::HTTP.Request, db::SQLite.DB=nothing)::Union{Nothing, HTTP.Response}
+function _check_auth(req::HTTP.Request, db::Union{SQLite.DB,Nothing}=nothing)::Union{Nothing, HTTP.Response}
     return _a2a_check_auth(req, db)
 end
 
@@ -845,7 +860,7 @@ function _a2a_dispatch_push_notifications!(db::SQLite.DB, task::Dict{String,Any}
     return nothing
 end
 
-function _a2a_extract_push_config(params::Dict{String,Any})
+function _a2a_extract_push_config(params::AbstractDict)
     if haskey(params, "taskPushNotificationConfig") && params["taskPushNotificationConfig"] isa Dict
         return Dict{String,Any}(params["taskPushNotificationConfig"])
     elseif haskey(params, "task_push_notification_config") && params["task_push_notification_config"] isa Dict
@@ -856,7 +871,7 @@ function _a2a_extract_push_config(params::Dict{String,Any})
         return Dict{String,Any}(params["pushNotificationConfig"])
     elseif haskey(params, "configuration")
         configuration = params["configuration"]
-        if configuration isa Dict
+        if configuration isa AbstractDict
             for key in ("taskPushNotificationConfig", "task_push_notification_config", "pushNotification", "pushNotificationConfig")
                 if haskey(configuration, key) && configuration[key] isa Dict
                     return Dict{String,Any}(configuration[key])

@@ -9,4 +9,4 @@ services:
     docker:
       path: Dockerfile
       target: runtime
-      remoteBuild: true
+      remoteBuild: false
