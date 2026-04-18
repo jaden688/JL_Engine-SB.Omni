@@ -658,6 +658,24 @@ function _send_tool_done(ws, name::String, res::Dict, elapsed_ms::Int)
                       "preview"=>preview, "elapsed_ms"=>elapsed_ms))
 end
 
+"""
+    _handle_forge_broken(ws, res) -> Bool
+
+If a tool result carries `forge_broken: true`, notify the UI and return true
+so the caller can inject a re-forge instruction into the next LLM message.
+"""
+function _handle_forge_broken(ws, res::Dict)
+    get(res, "forge_broken", false) === true || return false
+    tool_name = get(res, "tool_name", "unknown")
+    hint      = get(res, "hint", "Re-forge with corrected Julia code.")
+    st        = get(res, "stacktrace", "")
+    notify    = Dict("type" => "tool_error",
+                     "text" => "🔨 **$tool_name** is broken — triggering auto re-forge.\n$hint")
+    _ws_send(ws, JSON.json(notify))
+    log_ws_message_out(notify)
+    return true
+end
+
 function _execute_tool_call(ws, engine, name::String, args; loop_iter::Int=0)
     out_tool = Dict("type"=>"tool", "text"=>"🔧 $name")
     _ws_send(ws, out_tool)
@@ -1799,6 +1817,14 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                         end
                         res, elapsed = _execute_tool_call(ws, engine, c["name"], args; loop_iter=loop_iter)
                         last_tool_name_used = c["name"]; last_tool_elapsed_used = elapsed
+                        if _handle_forge_broken(ws, res)
+                            # Inject re-forge instruction so LLM fixes the broken tool next turn
+                            push!(history, Dict("role"=>"function","parts"=>[Dict(
+                                "functionResponse"=>Dict("name"=>c["name"],"response"=>Dict("content"=>res)))]))
+                            push!(history, Dict("role"=>"user","parts"=>[Dict(
+                                "text"=>"The tool '$(get(res,"tool_name",c["name"]))' is broken. Use forge_new_tool to rewrite it with corrected Julia code. Error: $(get(res,"error",""))\nStacktrace: $(get(res,"stacktrace",""))")]))
+                            has_tool = false; break
+                        end
                         if _abort_generation_if_requested!(ws)
                             has_tool = false
                             break
@@ -2093,6 +2119,13 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                     end
                     res, elapsed = _execute_tool_call(ws, engine, tc_name, tc_args; loop_iter=loop_iter)
                     last_tool_name_used = tc_name; last_tool_elapsed_used = elapsed
+                    if _handle_forge_broken(ws, res)
+                        # Inject re-forge instruction so LLM fixes the broken tool next turn
+                        push!(oai_messages, Dict("role"=>"tool","tool_call_id"=>tc_id,"content"=>JSON.json(res)))
+                        push!(oai_messages, Dict("role"=>"user","content"=>
+                            "The tool '$(get(res,"tool_name",tc_name))' is broken. Use forge_new_tool to rewrite it with corrected Julia code. Error: $(get(res,"error",""))\nStacktrace: $(get(res,"stacktrace",""))"))
+                        has_tool = false; break
+                    end
                     if _abort_generation_if_requested!(ws)
                         has_tool = false
                         break
@@ -2148,6 +2181,26 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
     !isempty(final_reply) && Main.JLEngine.record_turn!(engine, txt, final_reply; snapshot=snapshot)
     elapsed_total = round(Int, datetime2unix(now()) * 1000) - turn_start_ms
     log_turn_complete(txt, length(final_reply), loop_iter, elapsed_total)
+
+    # Broadcast live engine state after every turn — consumed by Webula Neural Explorer
+    try
+        snap = snapshot isa Dict ? snapshot : Dict{String,Any}()
+        _ws_send(ws, JSON.json(Dict(
+            "type"        => "engine_state",
+            "persona"     => string(engine.current_persona_name),
+            "gait"        => string(engine.current_gait),
+            "rhythm"      => string(engine.current_rhythm_mode),
+            "aperture"    => string(get(get(snap, "aperture_state", Dict()), "mode", "GUARDED")),
+            "drift"       => round(get(get(snap, "drift", Dict()), "pressure", 0.0); digits=3),
+            "stability"   => round(engine.stability_score; digits=3),
+            "loop_iters"  => loop_iter,
+            "elapsed_ms"  => elapsed_total,
+            "model"       => string(_current_model),
+            "provider"    => string(_current_provider),
+        )))
+    catch e
+        @warn "Failed to broadcast engine_state" exception=(e, catch_backtrace())
+    end
     if !isempty(strip(final_reply))
         try
             _queue_tts_reply!(ws, final_reply; turn_id=loop_iter, model=_tts_model(), voice=_tts_voice())
