@@ -724,22 +724,94 @@ function _build_self_context(engine)
     agent_arch  = get(identity, "archetype",    "")
 
     # Pull tool bias if available (so each agent knows its own posture)
-    core_tools  = get(pdata, "core_tools", Dict())
-    tool_policy = get(core_tools, "tool_policy", Dict())
-    tool_bias   = get(core_tools, "tool_bias_profile", Dict())
-    forge_bias  = get(get(tool_bias, "forge_affinity", Dict()), "weight", 0.75)
-    initiative  = get(tool_bias, "initiative", 0.8)
+    core_tools   = get(pdata, "core_tools", Dict())
+    tool_policy  = get(core_tools, "tool_policy", Dict())
+    tool_bias    = get(core_tools, "tool_bias_profile", Dict())
+    forge_bias   = get(get(tool_bias, "forge_affinity", Dict()), "weight", 0.75)
+    initiative   = get(tool_bias, "initiative", 0.8)
+
+    # Pull abilities profile
+    abilities    = get(pdata, "abilities", Dict())
+    ability_prof = get(abilities, "ability_profile", Dict())
+    exec_traits  = get(abilities, "execution_traits", Dict())
+
+    # Pull cognitive modes + gears
+    cog_modes    = get(pdata, "cognitive_modes", Dict())
+    active_modes = get(cog_modes, "active_modes", String[])
+    mode_behaviors = get(cog_modes, "mode_behaviors", Dict())
+    cog_gears    = get(pdata, "cognitive_gears", Dict())
+    preferred_gears = get(cog_gears, "preferred_gears", String[])
+
+    # Pull behavior pillars + core directives
+    behavior     = get(pdata, "behavior", Dict())
+    pillars      = get(behavior, "pillars", String[])
+    directives   = get(behavior, "core_directives", String[])
+
+    # Pull emotion baseline
+    emotion_wheel = get(pdata, "emotion_wheel", Dict())
+    emotion_base  = get(emotion_wheel, "baseline_root", "")
+    emotion_family = get(emotion_wheel, "baseline_family", "")
+
+    # Pull recent memory + thoughts from SQLite to pre-load into context
+    recent_thoughts = try
+        db = BYTE.Tools._state[:db]
+        db === nothing && error("no db")
+        rows = SQLite.DBInterface.execute(db, "SELECT thought, type FROM thoughts ORDER BY id DESC LIMIT 3") |> DataFrames.DataFrame
+        nrow(rows) == 0 ? "" : join(["[$(rows[i,:type])] $(first(string(rows[i,:thought]), 150))" for i in 1:nrow(rows)], "\n")
+    catch; "" end
+
+    recent_memory = try
+        db = BYTE.Tools._state[:db]
+        db === nothing && error("no db")
+        rows = SQLite.DBInterface.execute(db, "SELECT content, tag FROM memory WHERE tag NOT IN ('self_src','self_tree') ORDER BY id DESC LIMIT 5") |> DataFrames.DataFrame
+        nrow(rows) == 0 ? "" : join(["[$(rows[i,:tag])] $(first(string(rows[i,:content]), 120))" for i in 1:nrow(rows)], "\n")
+    catch; "" end
+
+    abilities_block = if !isempty(ability_prof)
+        lines = ["  $k: $(round(Float64(v); digits=2))" for (k,v) in ability_prof]
+        "--- YOUR ABILITY PROFILE ---\n" * join(lines, "\n")
+    else "" end
+
+    modes_block = if !isempty(active_modes)
+        mode_lines = join(["  $m" * (haskey(mode_behaviors, m) ? " — $(mode_behaviors[m])" : "") for m in active_modes], "\n")
+        "ACTIVE COGNITIVE MODES:\n$mode_lines"
+    else "" end
+
+    gears_block = isempty(preferred_gears) ? "" : "PREFERRED GEARS: $(join(preferred_gears, ", "))"
+
+    pillars_block = isempty(pillars) ? "" : "YOUR PILLARS:\n" * join(["  $p" for p in pillars], "\n")
+
+    directives_block = isempty(directives) ? "" : "CORE DIRECTIVES:\n" * join(["  - $d" for d in directives], "\n")
+
+    memory_block = if !isempty(recent_memory) || !isempty(recent_thoughts)
+        "--- YOUR RECENT MEMORY ---\n" *
+        (isempty(recent_memory) ? "" : "Recent stored memory:\n$recent_memory\n") *
+        (isempty(recent_thoughts) ? "" : "Recent thoughts:\n$recent_thoughts")
+    else "" end
 
     return """
 --- RUNTIME SELF-CONTEXT ---
 You are $agent_name — $agent_role.
 $(isempty(agent_desc) ? "" : agent_desc * "\n")
 $(isempty(agent_arch) ? "" : "Archetype: $agent_arch\n")
+$(isempty(emotion_base) ? "" : "Emotional baseline: $emotion_base ($emotion_family)\n")
 You are running natively inside the JL Engine — a Julia 1.x behavioral runtime.
 Project root: $project_root
 Your fat agent definition is loaded from: data/personas/$pfile
 All agents (SparkByte, The Gremlin, Slappy, Temporal, Supervisor, and any user-imported agents)
 run on this same engine. You are the active agent right now.
+
+$directives_block
+
+$pillars_block
+
+$modes_block
+
+$gears_block
+
+$abilities_block
+
+$memory_block
 
 You have full access to the project via read_file, write_file, execute_code, and run_command.
 Engine source: src/ (JL Engine behavioral modules)
