@@ -1243,9 +1243,8 @@ async function refreshOllamaModels(){
     const r = await fetch(base + '/api/tags', {signal: AbortSignal.timeout(3000)});
     if(!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
-    const allModels = (data.models || []).map(m => m.name || m.model).filter(Boolean);
-    // Filter out vision/multimodal models — they 400 on plain text chat
-    const models = allModels.filter(m => !/([-_]vl|[-_]vision|vision[-_])/i.test(m));
+    const models = (data.models || []).map(m => m.name || m.model).filter(Boolean);
+    const isVision = m => /([-_]vl|[-_]vision|vision[-_])/i.test(m);
     if(models.length === 0) {
       if(statusEl) statusEl.textContent = 'Ollama running — no models pulled yet';
       if(listEl) listEl.innerHTML = '<span style="color:var(--yellow)">Run: ollama pull llama3.1</span>';
@@ -1253,7 +1252,7 @@ async function refreshOllamaModels(){
     }
     // Update both dropdowns
     const ollamaOptgroupHTML = '<optgroup label="── Ollama (Local) ──">' +
-      models.map(m => `<option value="ollama:${m}">🦙 ${m}</option>`).join('') +
+      models.map(m => `<option value="ollama:${m}">${isVision(m) ? '👁 ' : '🦙 '}${m}${isVision(m) ? ' (multimodal)' : ''}</option>`).join('') +
       '</optgroup>';
     for(const selId of ['model-select','settings-model']){
       const sel = document.getElementById(selId);
