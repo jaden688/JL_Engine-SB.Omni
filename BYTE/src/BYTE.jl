@@ -147,7 +147,9 @@ end
 function _ollama_openai_endpoint()
     explicit = strip(get(ENV, "OLLAMA_OPENAI_ENDPOINT", ""))
     !isempty(explicit) && return explicit
-    base = rstrip(strip(get(ENV, "OLLAMA_BASE_URL", "http://localhost:11434")), '/')
+    # Use 127.0.0.1 not "localhost" — on Windows, "localhost" can resolve to IPv6 (::1)
+    # first, but Ollama only binds 127.0.0.1 by default, so IPv6 connects hang/fail silently.
+    base = rstrip(strip(get(ENV, "OLLAMA_BASE_URL", "http://127.0.0.1:11434")), '/')
     return "$base/v1/chat/completions"
 end
 
