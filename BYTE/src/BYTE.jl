@@ -275,13 +275,16 @@ const _CEREBRAS_MODELS_SET = Set([
 
 function get_provider_for_model(model::AbstractString)::String
     m = String(model)
+    # Explicit provider prefixes first — these win over pattern heuristics.
+    # (Ollama model names can contain '/' like `user/repo:tag`, which would
+    #  otherwise be misrouted to OpenRouter.)
+    startswith(m, "ollama:")                                                  && return "ollama"
     startswith(m, "azure:")                                                  && return "azure"
-    (startswith(m, "or:") || occursin("/", m) || startswith(m, "openrouter:")) && return "openrouter"
+    (startswith(m, "or:") || startswith(m, "openrouter:") || occursin("/", m)) && return "openrouter"
     m in _XAI_RESPONSES_MODELS_SET                                           && return "xai_responses"
     m in _CEREBRAS_MODELS_SET                                                && return "cerebras"
     startswith(m, "grok-")                                                   && return "xai"
     (startswith(m, "gpt-") || startswith(m, "o4-") || startswith(m, "o3-"))   && return "openai"
-    startswith(m, "ollama:")                                                  && return "ollama"
     return "gemini"
 end
 
