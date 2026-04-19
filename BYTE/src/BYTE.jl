@@ -2362,7 +2362,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
             "loop_iters"  => loop_iter,
             "elapsed_ms"  => elapsed_total,
             "model"       => string(_current_model),
-            "provider"    => string(_current_provider),
+            "provider"    => string(_provider_from_model(_current_model)),
         )))
     catch e
         @warn "Failed to broadcast engine_state" exception=(e, catch_backtrace())
