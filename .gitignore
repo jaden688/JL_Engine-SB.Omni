@@ -76,3 +76,30 @@ venv/
 .DS_Store
 Thumbs.db
 pitreader_backup_copy/
+
+# Project bloat — these are nested copies / moved into their own repos
+Metta4/
+webula-final-repo-Webula-Final1-main/
+nexus-os---ai-terminal*/
+nexus-os---ai-terminal*.zip
+.julia_depot/
+_vibecheck_audit/
+docs/
+logs/
+
+# Scratch / one-off scripts & benchmarks not part of the engine
+inference_benchmark.jl
+matrix_benchmark.jl
+speed_test_matrix.jl
+cerebras_stream.py
+parse_sb.py
+check_keys.ps1
+peek_env.ps1
+wait_up.ps1
+launch.ps1
+hello_jaden.txt
+sparkbyte_demo.html
+SparkByte_Live_Feed.md
+TRUTH.md
+sparkbyte_memory.db.bak-*
+data/budget_ledger.json
