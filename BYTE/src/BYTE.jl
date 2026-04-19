@@ -1515,7 +1515,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                 "gemini-2.5-pro",
                 "gpt-4.1",
                 "gpt-oss-120b",
-                "ollama:qwen3",
+                "ollama:qwen3:4b",
             ]; fallback="gemini-2.5-flash")
         elseif occursin(r"code|function|bug|debug|script|implement|refactor|class|def |```", last_user_msg)
             _pick_available_model([
@@ -1524,7 +1524,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                 "gemini-2.5-flash",
                 "gpt-4.1",
                 "gpt-oss-120b",
-                "ollama:qwen3",
+                "ollama:qwen3:4b",
             ]; fallback="gemini-2.5-flash")
         elseif occursin(r"image|picture|photo|screenshot|look at|describe this", last_user_msg)
             _pick_available_model([
@@ -1546,7 +1546,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                 "gemini-2.5-flash",
                 "gpt-4o-mini",
                 "gpt-oss-120b",
-                "ollama:llama3.3",
+                "ollama:qwen3:4b",
             ]; fallback="gemini-2.5-flash")
         end
         @info "🧭 Auto-router → $_routed_model"

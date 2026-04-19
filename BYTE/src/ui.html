@@ -1192,7 +1192,9 @@ async function refreshOllamaModels(){
     const r = await fetch(base + '/api/tags', {signal: AbortSignal.timeout(3000)});
     if(!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
-    const models = (data.models || []).map(m => m.name || m.model).filter(Boolean);
+    const allModels = (data.models || []).map(m => m.name || m.model).filter(Boolean);
+    // Filter out vision/multimodal models — they 400 on plain text chat
+    const models = allModels.filter(m => !/([-_]vl|[-_]vision|vision[-_])/i.test(m));
     if(models.length === 0) {
       if(statusEl) statusEl.textContent = 'Ollama running — no models pulled yet';
       if(listEl) listEl.innerHTML = '<span style="color:var(--yellow)">Run: ollama pull llama3.1</span>';
@@ -1315,6 +1317,7 @@ function connect(){
   ws.onmessage=e=>{
     const d=JSON.parse(e.data);
     if(d.type==='ui_update'){gearVal.textContent=d.gear;modeVal.textContent=d.modes.join(' · ');}
+    else if(d.type==='engine_state'){/* consumed by Webula engineBridge — no-op in native UI */}
     else if(d.type==='generation_started'){_setGenerating(true);}
     else if(d.type==='confirm'){
       _setGenerating(false);
