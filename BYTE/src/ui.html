@@ -900,6 +900,11 @@ body{background:transparent;color:var(--green);height:100vh;height:100dvh;displa
       <div class="sm-section">
         <label>Ollama (Local)</label>
         <div class="sm-hint" style="color:var(--green)">No key needed — runs locally at <code>localhost:11434</code>. Install from <a href="https://ollama.com" target="_blank" style="color:var(--blue);">ollama.com</a> and pull a model first.</div>
+        <div class="sm-row" style="margin-top:6px;align-items:center;gap:8px;">
+          <span id="ollama-model-status" style="font-size:11px;color:var(--dim)">Not scanned</span>
+          <button onclick="refreshOllamaModels()" style="font-size:11px;padding:3px 10px;background:var(--glass);border:1px solid var(--glass-border);color:var(--text);border-radius:4px;cursor:pointer;">🦙 Refresh Models</button>
+        </div>
+        <div id="ollama-model-list" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;font-size:11px;color:var(--dim);"></div>
       </div>
       <div class="sm-section">
         <label>Active Model</label>
@@ -1178,6 +1183,44 @@ function _requestBackendProbe(force=false){
   send({type:'builder_cmd',cmd:'probe_backends',force:!!force});
 }
 
+async function refreshOllamaModels(){
+  const statusEl = document.getElementById('ollama-model-status');
+  const listEl   = document.getElementById('ollama-model-list');
+  if(statusEl) statusEl.textContent = 'Scanning...';
+  try {
+    const base = (window._ollamaBase || 'http://localhost:11434').replace(/\/$/, '');
+    const r = await fetch(base + '/api/tags', {signal: AbortSignal.timeout(3000)});
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    const models = (data.models || []).map(m => m.name || m.model).filter(Boolean);
+    if(models.length === 0) {
+      if(statusEl) statusEl.textContent = 'Ollama running — no models pulled yet';
+      if(listEl) listEl.innerHTML = '<span style="color:var(--yellow)">Run: ollama pull llama3.1</span>';
+      return;
+    }
+    // Update both dropdowns
+    const ollamaOptgroupHTML = '<optgroup label="── Ollama (Local) ──">' +
+      models.map(m => `<option value="ollama:${m}">🦙 ${m}</option>`).join('') +
+      '</optgroup>';
+    for(const selId of ['model-select','settings-model']){
+      const sel = document.getElementById(selId);
+      if(!sel) continue;
+      const existing = sel.querySelector('optgroup[label="── Ollama (Local) ──"]');
+      const tmp = document.createElement('div');
+      tmp.innerHTML = ollamaOptgroupHTML;
+      const newGroup = tmp.firstChild;
+      if(existing) sel.replaceChild(newGroup.cloneNode(true), existing);
+      else sel.appendChild(newGroup.cloneNode(true));
+    }
+    if(statusEl) statusEl.textContent = `✓ ${models.length} model${models.length>1?'s':''} found`;
+    if(listEl) listEl.innerHTML = models.map(m=>`<span style="background:var(--glass);padding:2px 6px;border-radius:3px;border:1px solid var(--glass-border)">${m}</span>`).join('');
+    window._ollamaModelsLoaded = true;
+  } catch(e) {
+    if(statusEl) statusEl.textContent = 'Ollama not running';
+    if(listEl) listEl.innerHTML = '<span style="color:var(--dim)">Start Ollama to see local models</span>';
+  }
+}
+
 function _applyBackendProbe(d){
   _backendProbe = d || {};
   const providers = (d && d.providers) ? d.providers : {};
@@ -1266,6 +1309,7 @@ function connect(){
     loadPersonas();
     send({type:'builder_cmd',cmd:'get_settings'});
     _requestBackendProbe(false);
+    refreshOllamaModels();
   };
   ws.onclose=()=>{sbStatus.textContent='● Disconnected';sbStatus.style.color='#f44';_setGenerating(false);setTimeout(connect,1500);};
   ws.onmessage=e=>{
@@ -2491,6 +2535,7 @@ function hideFileViewer(){
 
 /* ====== BOOT ====== */
 connect();
+refreshOllamaModels(); // auto-scan on load; also fires again on ws.onopen
 termPrint('⚡ JL_OS SparkByte Terminal','info');
 termPrint('Type commands, or use the file explorer. Ctrl+S save, Ctrl+` terminal, Ctrl+B toggle chat.','info');
 </script>
