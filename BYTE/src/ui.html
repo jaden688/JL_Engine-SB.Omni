@@ -1188,89 +1188,78 @@ function _requestBackendProbe(force=false){
   send({type:'builder_cmd',cmd:'probe_backends',force:!!force});
 }
 
-async function pullOllamaModel(){
+// All Ollama traffic is tunneled through BYTE (ws) to avoid browser CORS
+// and work even when the UI is served from a remote host.
+function pullOllamaModel(){
   const input = document.getElementById('ollama-pull-input');
   const statusEl = document.getElementById('ollama-pull-status');
   const name = (input?.value || '').trim();
   if(!name){ if(statusEl) statusEl.textContent = 'Enter a model name first'; return; }
-  const base = (window._ollamaBase || 'http://localhost:11434').replace(/\/$/, '');
   if(statusEl){ statusEl.textContent = `⬇ Pulling ${name}...`; statusEl.style.color = 'var(--pink,#ff2af2)'; }
-  try {
-    const r = await fetch(base + '/api/pull', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({name, stream: true})
-    });
-    if(!r.ok) throw new Error('HTTP ' + r.status);
-    const reader = r.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = '';
-    while(true){
-      const {done, value} = await reader.read();
-      if(done) break;
-      buf += decoder.decode(value, {stream: true});
-      const lines = buf.split('\n');
-      buf = lines.pop() || '';
-      for(const line of lines){
-        if(!line.trim()) continue;
-        try {
-          const j = JSON.parse(line);
-          if(j.status && statusEl){
-            let msg = j.status;
-            if(j.completed && j.total){
-              const pct = ((j.completed / j.total) * 100).toFixed(1);
-              msg += ` — ${pct}%`;
-            }
-            statusEl.textContent = msg;
-          }
-        } catch(_){}
-      }
-    }
-    if(statusEl){ statusEl.textContent = `✓ Pulled ${name}`; statusEl.style.color = 'var(--green,#00ffaa)'; }
-    input.value = '';
-    setTimeout(refreshOllamaModels, 300);
-  } catch(e) {
-    if(statusEl){ statusEl.textContent = `✗ Failed: ${e.message}`; statusEl.style.color = '#f44'; }
-  }
+  send({type:'builder_cmd', cmd:'ollama_pull', name});
 }
 
-async function refreshOllamaModels(){
+function _applyOllamaPullProgress(j){
+  const statusEl = document.getElementById('ollama-pull-status');
+  const input = document.getElementById('ollama-pull-input');
+  if(!statusEl) return;
+  if(j.done){
+    if(j.ok){
+      statusEl.textContent = `✓ Pulled ${j.model||''}`;
+      statusEl.style.color = 'var(--green,#00ffaa)';
+      if(input) input.value = '';
+      setTimeout(refreshOllamaModels, 300);
+    } else {
+      statusEl.textContent = `✗ Failed: ${j.error||'unknown'}`;
+      statusEl.style.color = '#f44';
+    }
+    return;
+  }
+  let msg = j.status || 'downloading...';
+  if(j.completed && j.total){
+    const pct = ((j.completed / j.total) * 100).toFixed(1);
+    msg += ` — ${pct}%`;
+  }
+  statusEl.textContent = msg;
+}
+
+function refreshOllamaModels(){
+  const statusEl = document.getElementById('ollama-model-status');
+  if(statusEl) statusEl.textContent = 'Scanning...';
+  send({type:'builder_cmd', cmd:'ollama_tags'});
+}
+
+function _applyOllamaTags(j){
   const statusEl = document.getElementById('ollama-model-status');
   const listEl   = document.getElementById('ollama-model-list');
-  if(statusEl) statusEl.textContent = 'Scanning...';
-  try {
-    const base = (window._ollamaBase || 'http://localhost:11434').replace(/\/$/, '');
-    const r = await fetch(base + '/api/tags', {signal: AbortSignal.timeout(3000)});
-    if(!r.ok) throw new Error('HTTP ' + r.status);
-    const data = await r.json();
-    const models = (data.models || []).map(m => m.name || m.model).filter(Boolean);
-    const isVision = m => /([-_]vl|[-_]vision|vision[-_])/i.test(m);
-    if(models.length === 0) {
-      if(statusEl) statusEl.textContent = 'Ollama running — no models pulled yet';
-      if(listEl) listEl.innerHTML = '<span style="color:var(--yellow)">Run: ollama pull llama3.1</span>';
-      return;
-    }
-    // Update both dropdowns
-    const ollamaOptgroupHTML = '<optgroup label="── Ollama (Local) ──">' +
-      models.map(m => `<option value="ollama:${m}">${isVision(m) ? '👁 ' : '🦙 '}${m}${isVision(m) ? ' (multimodal)' : ''}</option>`).join('') +
-      '</optgroup>';
-    for(const selId of ['model-select','settings-model']){
-      const sel = document.getElementById(selId);
-      if(!sel) continue;
-      const existing = sel.querySelector('optgroup[label="── Ollama (Local) ──"]');
-      const tmp = document.createElement('div');
-      tmp.innerHTML = ollamaOptgroupHTML;
-      const newGroup = tmp.firstChild;
-      if(existing) sel.replaceChild(newGroup.cloneNode(true), existing);
-      else sel.appendChild(newGroup.cloneNode(true));
-    }
-    if(statusEl) statusEl.textContent = `✓ ${models.length} model${models.length>1?'s':''} found`;
-    if(listEl) listEl.innerHTML = models.map(m=>`<span style="background:var(--glass);padding:2px 6px;border-radius:3px;border:1px solid var(--glass-border)">${m}</span>`).join('');
-    window._ollamaModelsLoaded = true;
-  } catch(e) {
+  if(!j.ok){
     if(statusEl) statusEl.textContent = 'Ollama not running';
     if(listEl) listEl.innerHTML = '<span style="color:var(--dim)">Start Ollama to see local models</span>';
+    return;
   }
+  const models = (j.models||[]).map(m=>m.name||m.model).filter(Boolean);
+  const isVision = m => /([-_]vl|[-_]vision|vision[-_])/i.test(m);
+  if(models.length === 0){
+    if(statusEl) statusEl.textContent = 'Ollama running — no models pulled yet';
+    if(listEl) listEl.innerHTML = '<span style="color:var(--yellow)">Use the Pull box above or: ollama pull llama3.2:3b</span>';
+    return;
+  }
+  const ollamaOptgroupHTML = '<optgroup label="── Ollama (Local) ──">' +
+    models.map(m => `<option value="ollama:${m}">${isVision(m) ? '👁 ' : '🦙 '}${m}${isVision(m) ? ' (multimodal)' : ''}</option>`).join('') +
+    '</optgroup>';
+  for(const selId of ['model-select','settings-model']){
+    const sel = document.getElementById(selId);
+    if(!sel) continue;
+    const existing = sel.querySelector('optgroup[label="── Ollama (Local) ──"]');
+    const tmp = document.createElement('div');
+    tmp.innerHTML = ollamaOptgroupHTML;
+    const newGroup = tmp.firstChild;
+    if(existing) sel.replaceChild(newGroup.cloneNode(true), existing);
+    else sel.appendChild(newGroup.cloneNode(true));
+  }
+  if(statusEl) statusEl.textContent = `✓ ${models.length} model${models.length>1?'s':''} found`;
+  if(listEl) listEl.innerHTML = models.map(m=>`<span style="background:var(--glass);padding:2px 6px;border-radius:3px;border:1px solid var(--glass-border)">${m}</span>`).join('');
+  window._ollamaModelsLoaded = true;
 }
 
 function _applyBackendProbe(d){
@@ -1368,6 +1357,8 @@ function connect(){
     const d=JSON.parse(e.data);
     if(d.type==='ui_update'){gearVal.textContent=d.gear;modeVal.textContent=d.modes.join(' · ');}
     else if(d.type==='engine_state'){/* consumed by Webula engineBridge — no-op in native UI */}
+    else if(d.type==='ollama_tags'){_applyOllamaTags(d);}
+    else if(d.type==='ollama_pull_progress'){_applyOllamaPullProgress(d);}
     else if(d.type==='generation_started'){_setGenerating(true);}
     else if(d.type==='confirm'){
       _setGenerating(false);
@@ -2600,7 +2591,7 @@ function hideFileViewer(){
 
 /* ====== BOOT ====== */
 connect();
-refreshOllamaModels(); // auto-scan on load; also fires again on ws.onopen
+// refreshOllamaModels fires inside ws.onopen once the tunnel is up
 termPrint('⚡ JL_OS SparkByte Terminal','info');
 termPrint('Type commands, or use the file explorer. Ctrl+S save, Ctrl+` terminal, Ctrl+B toggle chat.','info');
 </script>

@@ -1048,6 +1048,65 @@ function _handle_builder_cmd(ws, p)
         end
         _ws_send(ws, JSON.json(Dict("type"=>"terminal_output", "output"=>result)))
 
+    elseif cmd == "ollama_tags"
+        # Proxy Ollama /api/tags through BYTE to dodge browser CORS
+        base = rstrip(strip(get(ENV, "OLLAMA_BASE_URL", "http://127.0.0.1:11434")), '/')
+        models = Any[]
+        ok = false
+        err = ""
+        try
+            r = HTTP.get("$base/api/tags"; readtimeout=5, retry=false, status_exception=false)
+            if r.status == 200
+                data = JSON.parse(String(r.body))
+                models = get(data, "models", Any[])
+                ok = true
+            else
+                err = "HTTP $(r.status)"
+            end
+        catch e
+            err = string(e)
+        end
+        _ws_send(ws, JSON.json(Dict("type"=>"ollama_tags", "ok"=>ok, "models"=>models, "error"=>err)))
+
+    elseif cmd == "ollama_pull"
+        # Stream Ollama /api/pull through BYTE with incremental progress events
+        model_name = strip(string(get(p, "name", "")))
+        if isempty(model_name)
+            _ws_send(ws, JSON.json(Dict("type"=>"ollama_pull_progress", "done"=>true, "ok"=>false, "error"=>"empty model name")))
+        else
+            base = rstrip(strip(get(ENV, "OLLAMA_BASE_URL", "http://127.0.0.1:11434")), '/')
+            @async try
+                HTTP.open("POST", "$base/api/pull",
+                    ["Content-Type"=>"application/json"];
+                    readtimeout=0) do io
+                    write(io, JSON.json(Dict("name"=>model_name, "stream"=>true)))
+                    HTTP.closewrite(io)
+                    buf = ""
+                    while !eof(io)
+                        chunk = String(readavailable(io))
+                        buf *= chunk
+                        while occursin('\n', buf)
+                            idx = findfirst('\n', buf)
+                            line = buf[1:idx-1]
+                            buf = buf[idx+1:end]
+                            isempty(strip(line)) && continue
+                            try
+                                j = JSON.parse(line)
+                                _ws_send(ws, JSON.json(Dict("type"=>"ollama_pull_progress",
+                                    "status"=>get(j, "status", ""),
+                                    "completed"=>get(j, "completed", 0),
+                                    "total"=>get(j, "total", 0),
+                                    "done"=>false, "model"=>model_name)))
+                            catch; end
+                        end
+                    end
+                end
+                _ws_send(ws, JSON.json(Dict("type"=>"ollama_pull_progress", "done"=>true, "ok"=>true, "model"=>model_name)))
+            catch e
+                _ws_send(ws, JSON.json(Dict("type"=>"ollama_pull_progress", "done"=>true, "ok"=>false, "error"=>string(e), "model"=>model_name)))
+            end
+        end
+
     elseif cmd == "list_personas"
         personas_file = joinpath(root, "data", "personas", "Personas.mpf.json")
         names = String[]
@@ -2205,7 +2264,12 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                 elseif status >= 500
                     "⚠️ Backend **$prov** is having issues (HTTP $status). Try again or switch models."
                 else
-                    "⚠️ Backend **$prov** returned HTTP $status for model `$modl`. Switching models may help."
+                    # Capture the actual response body so 400s surface the real reason
+                    body_txt = try
+                        String(copy(e.response.body))
+                    catch; ""; end
+                    body_snip = isempty(body_txt) ? "" : "\n\n```\n" * first(body_txt, 500) * "\n```"
+                    "⚠️ Backend **$prov** returned HTTP $status for model `$modl`. Switching models may help.$body_snip"
                 end
             else
                 "FAILURE: $(first(_redact_sensitive_text(e), 300))"
