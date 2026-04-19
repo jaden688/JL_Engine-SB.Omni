@@ -151,6 +151,41 @@ function _ollama_openai_endpoint()
     return "$base/v1/chat/completions"
 end
 
+# Per-model capability cache — avoids per-request /api/show round trips.
+# Populated on first use, invalidated when BYTE reloads.
+const _OLLAMA_CAPS = Dict{String, Set{String}}()
+
+function _ollama_model_caps(model::AbstractString)::Set{String}
+    m = String(model)
+    haskey(_OLLAMA_CAPS, m) && return _OLLAMA_CAPS[m]
+    caps = Set{String}()
+    try
+        base = rstrip(strip(get(ENV, "OLLAMA_BASE_URL", "http://127.0.0.1:11434")), '/')
+        r = HTTP.post("$base/api/show",
+            ["Content-Type"=>"application/json"],
+            JSON.json(Dict("name"=>m));
+            readtimeout=3, retry=false, status_exception=false)
+        if r.status == 200
+            data = JSON.parse(String(r.body))
+            raw = get(data, "capabilities", Any[])
+            if raw isa AbstractVector
+                for c in raw
+                    push!(caps, String(c))
+                end
+            end
+        end
+    catch; end
+    _OLLAMA_CAPS[m] = caps
+    caps
+end
+
+function _ollama_supports_tools(model::AbstractString)::Bool
+    caps = _ollama_model_caps(model)
+    # If caps lookup failed (empty set) assume true — fall through to server error if wrong.
+    # If caps lookup succeeded, require explicit "tools" capability.
+    isempty(caps) ? true : ("tools" in caps)
+end
+
 # ── Provider profiles — single source of truth for every LLM provider ─────────
 const PROVIDER_PROFILES = Dict{String,Dict{String,Any}}(
     "gemini" => Dict(
@@ -2161,7 +2196,15 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
             payload = Dict{String,Any}("model"=>actual_model, "messages"=>oai_messages,
                                        "temperature"=>temp)
             pp["supports_top_p"] && (payload["top_p"] = top_p)
-            if !chat_mode && pp["supports_tools"]
+            # Per-model capability gate for Ollama: many models decline tools and
+            # return "cannot unmarshal string into ToolProperty" on the OpenAI-compat
+            # endpoint. Query /api/show once per model and skip tools if unsupported.
+            model_supports_tools = if provider == "ollama"
+                _ollama_supports_tools(actual_model)
+            else
+                true
+            end
+            if !chat_mode && pp["supports_tools"] && model_supports_tools
                 payload["tools"]       = oai_tools
                 payload["tool_choice"] = "auto"
             end
@@ -2172,7 +2215,26 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
             end
 
             headers = ["Content-Type"=>"application/json", "Authorization"=>"Bearer $api_key"]
-            resp = HTTP.post(api_url, headers, JSON.json(payload))
+            resp = try
+                HTTP.post(api_url, headers, JSON.json(payload))
+            catch e
+                # Ollama tool-schema 400s: retry once without tools and cache that
+                # this model doesn't handle tool schemas, so future turns skip them.
+                if provider == "ollama" && e isa HTTP.Exceptions.StatusError && e.status == 400 && haskey(payload, "tools")
+                    body_txt = try; String(copy(e.response.body)); catch; ""; end
+                    if occursin("ToolProperty", body_txt) || occursin("tool", lowercase(body_txt))
+                        # Mark model as non-tool-capable for the rest of this session
+                        _OLLAMA_CAPS[actual_model] = Set{String}(["completion"])
+                        delete!(payload, "tools"); delete!(payload, "tool_choice")
+                        @warn "Ollama model $actual_model rejected tool schema — retrying without tools (cached)"
+                        HTTP.post(api_url, headers, JSON.json(payload))
+                    else
+                        rethrow()
+                    end
+                else
+                    rethrow()
+                end
+            end
             data = JSON.parse(String(resp.body))
             _abort_generation_if_requested!(ws) && break
 
