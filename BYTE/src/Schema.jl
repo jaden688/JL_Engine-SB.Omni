@@ -108,8 +108,20 @@ const TOOLS_SCHEMA = [Dict("function_declarations" => [
         )
     ),
     Dict(
+        "name" => "jina_fetch",
+        "description" => "PRIMARY web reader. Fetches any URL via Jina Reader (https://r.jina.ai) and returns clean LLM-ready markdown — no browser, no screenshots, fast and cheap. Use this FIRST for any web read. Falls back to browse_url/playwright_interact only for JS-heavy SPAs, auth-walled pages, or interactive flows (clicks, form fills).",
+        "parameters" => Dict(
+            "type" => "OBJECT",
+            "properties" => Dict(
+                "url" => Dict("type" => "STRING", "description" => "Full URL to fetch (http/https)"),
+                "max_chars" => Dict("type" => "INTEGER", "description" => "Max characters to return (default 8000)")
+            ),
+            "required" => ["url"]
+        )
+    ),
+    Dict(
         "name" => "browse_url",
-        "description" => "Fetch the visible text content of a web page (up to 5000 chars).",
+        "description" => "FALLBACK web reader (Playwright headless). Use only when jina_fetch fails — JS-heavy SPAs, geo/auth-walled pages, or sites that block Jina. Returns up to 5000 chars of visible text.",
         "parameters" => Dict(
             "type" => "OBJECT",
             "properties" => Dict("url" => Dict("type" => "STRING", "description" => "Full URL to visit")),

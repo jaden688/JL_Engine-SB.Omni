@@ -649,7 +649,40 @@ function _run_task(task_id::String, message_text::String, db, engine_ref)
             # Route through engine as a conversation turn
             if engine_ref !== nothing
                 resp = Main.JLEngine.process_turn(engine_ref[], args["text"])
-                Dict("text" => resp, "source" => "engine")
+                reply_text = if resp isa AbstractDict
+                    something(get(resp, "reply", nothing), get(resp, "text", nothing), string(resp))
+                else
+                    string(resp)
+                end
+                # Surface a thought bubble for regular chats too — same lifecycle
+                # the autopilot loop uses, so the UI lights up consistently.
+                # If the backend captured a chain-of-thought (Gemini reasoning,
+                # OpenAI o-series, etc.) expose it as a separate "cot" event so
+                # the UI can render the reasoning trace, not just the answer.
+                try
+                    if isdefined(Main, :Autopilot) && isdefined(Main.Autopilot, :_autopilot_broadcast)
+                        tick = round(Int, time() * 1000)
+                        meta = resp isa AbstractDict ? resp : Dict{String,Any}()
+                        telem = get(meta, "telemetry", Dict())
+                        backend_meta = telem isa AbstractDict ? get(telem, "backend_meta", Dict()) : Dict()
+                        cot = backend_meta isa AbstractDict ? get(backend_meta, "thoughts", "") : ""
+                        if !isempty(cot)
+                            Main.Autopilot._autopilot_broadcast(Dict{String,Any}(
+                                "type"=>"autopilot_thinking", "tick"=>tick,
+                                "topic"=>"reasoning", "text"=>cot,
+                                "gait"=>get(meta, "gait", ""), "done"=>true,
+                                "source"=>"chat_cot",
+                            ))
+                        end
+                        Main.Autopilot._autopilot_broadcast(Dict{String,Any}(
+                            "type"=>"autopilot_thinking", "tick"=>tick + 1,
+                            "topic"=>"chat", "text"=>reply_text,
+                            "gait"=>get(meta, "gait", ""), "done"=>true,
+                            "source"=>"chat",
+                        ))
+                    end
+                catch e; @warn "chat thought broadcast failed" exception=e; end
+                Dict("text" => reply_text, "source" => "engine", "meta" => resp)
             else
                 Dict("error" => "Engine not available in A2A context")
             end

@@ -271,7 +271,62 @@ function _build_messages(engine::JLEngineCore, user_text::AbstractString, snapsh
         append!(lines, ["- $(rule)" for rule in engine.core_rules])
     end
     push!(lines, "")
-    push!(lines, "ACTIVE PERSONA: $(get(projection, "name", engine.current_persona_name))")
+    persona_name = get(projection, "name", engine.current_persona_name)
+    push!(lines, "ACTIVE PERSONA: $(persona_name)")
+
+    # IDENTITY — the agent's actual self-description from the Full.json file.
+    # Without this the model only knows the name and has no idea who it's playing.
+    identity = get(projection, "identity", nothing)
+    if identity isa AbstractDict
+        role     = get(identity, "role", "")
+        arche    = get(identity, "archetype", "")
+        descr    = get(identity, "description", "")
+        isempty(role)  || push!(lines, "ROLE: $(role)")
+        isempty(arche) || push!(lines, "ARCHETYPE: $(arche)")
+        isempty(descr) || push!(lines, "IDENTITY: $(first(string(descr), 600))")
+    end
+
+    # BEHAVIOR — directives, pillars, avoidances. The "how to act" core.
+    behavior = get(projection, "behavior", nothing)
+    if behavior isa AbstractDict
+        for (key, label) in (("core_directives","DIRECTIVES"), ("pillars","PILLARS"), ("avoidances","AVOID"))
+            v = get(behavior, key, nothing)
+            v isa AbstractVector && !isempty(v) || continue
+            items = [strip(string(x)) for x in v if !isempty(strip(string(x)))]
+            isempty(items) && continue
+            push!(lines, "$(label):")
+            for item in first(items, 8); push!(lines, "  - $(first(item, 200))"); end
+        end
+    end
+
+    # GAIT — sentence style + verbosity. Voice fingerprint.
+    gait_data = get(projection, "gait", nothing)
+    if gait_data isa AbstractDict
+        style  = get(gait_data, "sentence_style", "")
+        verb   = get(gait_data, "verbosity_preference", "")
+        tonal  = get(gait_data, "tonal_range", "")
+        bits = String[]
+        isempty(style) || push!(bits, "style=$(style)")
+        isempty(verb)  || push!(bits, "verbosity=$(verb)")
+        isempty(tonal) || push!(bits, "tone=$(tonal)")
+        isempty(bits) || push!(lines, "VOICE: $(join(bits, " · "))")
+    end
+
+    # COGNITIVE MODES — active modes guide reasoning style.
+    cog = get(projection, "cognitive_modes", nothing)
+    if cog isa AbstractDict
+        active = get(cog, "active_modes", Any[])
+        active isa AbstractVector && !isempty(active) &&
+            push!(lines, "ACTIVE COGNITIVE MODES: $(join([string(x) for x in active], ", "))")
+    end
+
+    # TOOL POLICY — guides when/how she reaches for tools.
+    ctools = get(projection, "core_tools", nothing)
+    if ctools isa AbstractDict
+        policy = get(ctools, "tool_policy", "")
+        isempty(policy) || push!(lines, "TOOL POLICY: $(first(string(policy), 300))")
+    end
+
     push!(lines, "")
     push!(lines, "ENGINE STATE SNAPSHOT:")
     push!(lines, "- Gait: $(get(snapshot, "gait", engine.current_gait))")

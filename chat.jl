@@ -51,7 +51,7 @@ while true
     
     # Prepare the data to send to Google's servers
     payload = Dict("contents" => history)
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$api_key"
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=$api_key"
     
     try
         print("Gemini is thinking...")

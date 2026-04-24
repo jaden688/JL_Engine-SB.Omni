@@ -291,12 +291,12 @@ body{background:transparent;color:var(--green);height:100vh;height:100dvh;displa
 /* ══════════════════════ THINKING BUBBLE ══════════════════════ */
 .thinking-bubble{
   background:linear-gradient(135deg,rgba(0,30,44,0.95),rgba(0,18,28,0.85));
-  border:1px solid rgba(0,188,212,0.18);
-  border-left:2px solid #00e5cc;
-  border-radius:var(--radius-sm);
-  margin:5px 0;font-size:11px;color:#80cbc4;
+  border:1px solid rgba(0,188,212,0.22);
+  border-left:3px solid #00e5cc;
+  border-radius:var(--radius-sm) var(--radius-sm) 0 0;
+  margin:8px 0 0 0;font-size:11px;color:#80cbc4;
   overflow:hidden;
-  box-shadow:0 0 24px rgba(0,188,212,0.05) inset,0 2px 12px rgba(0,0,0,0.3);
+  box-shadow:0 0 24px rgba(0,188,212,0.07) inset,0 2px 12px rgba(0,0,0,0.3);
   animation:msgSlideIn 0.18s ease both;
 }
 .thinking-bubble .think-header{
@@ -309,14 +309,20 @@ body{background:transparent;color:var(--green);height:100vh;height:100dvh;displa
 .thinking-bubble .think-header .think-label{font-weight:600;letter-spacing:0.04em;flex:1;color:#4dd0c4;}
 .thinking-bubble .think-header .think-toggle{color:var(--dim);font-size:10px;}
 .thinking-bubble .think-body{
-  padding:0 12px 8px 12px;white-space:pre-wrap;word-break:break-word;
-  color:#37666e;font-size:10px;line-height:1.6;display:none;
-  border-top:1px solid rgba(0,188,212,0.08);
+  padding:0 12px 10px 12px;white-space:pre-wrap;word-break:break-word;
+  color:#a8d8d4;font-size:11px;line-height:1.65;display:none;
+  border-top:1px solid rgba(0,188,212,0.15);
+  max-height:480px;overflow-y:auto;
 }
 .thinking-bubble.expanded .think-body{display:block;}
 .thinking-bubble.done .think-icon{animation:none;}
 .thinking-bubble.done .think-label{color:#26a69a;}
 .thinking-bubble.done{border-left-color:#26a69a;opacity:0.85;}
+.msg.spark.after-think{
+  border-top-left-radius:0;
+  border-top:1px solid rgba(0,188,212,0.18);
+  margin-top:0;
+}
 
 /* ══════════════════════ AUTOPILOT BUBBLE ══════════════════════ */
 .autopilot-bubble{
@@ -651,6 +657,205 @@ body{background:transparent;color:var(--green);height:100vh;height:100dvh;displa
 .etab.forge-tab .forge-dot{display:none;width:6px;height:6px;border-radius:50%;background:var(--pink);box-shadow:0 0 6px var(--pink);animation:pulse 1s ease-in-out infinite;}
 .etab.forge-tab.streaming .forge-dot{display:inline-block;}
 
+/* ══════════════════════ STEALTH BROWSER ══════════════════════ */
+#stealth-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,0.82);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  z-index:500;display:none;align-items:stretch;justify-content:center;
+  padding:0;
+}
+#stealth-overlay.open{display:flex;}
+#stealth-window{
+  width:min(1300px,100vw);height:100vh;
+  background:rgba(4,4,14,0.98);
+  border-left:1px solid rgba(0,255,170,0.12);
+  border-right:1px solid rgba(0,255,170,0.12);
+  display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:0 0 80px rgba(0,0,0,0.9),0 0 0 1px rgba(0,255,170,0.06);
+  position:relative;
+}
+#stealth-titlebar{
+  height:36px;display:flex;align-items:center;gap:8px;padding:0 12px;
+  background:rgba(0,0,0,0.6);border-bottom:1px solid var(--glass-border);
+  flex-shrink:0;
+}
+.stl-dot{width:11px;height:11px;border-radius:50%;flex-shrink:0;}
+.stl-dot.red{background:#ff5f57;box-shadow:0 0 6px rgba(255,95,87,0.5);}
+.stl-dot.yellow{background:#febc2e;box-shadow:0 0 6px rgba(254,188,46,0.4);}
+.stl-dot.green{background:#28c840;box-shadow:0 0 6px rgba(40,200,64,0.4);}
+#stealth-titlebar-label{flex:1;text-align:center;font-size:11px;letter-spacing:2px;color:var(--dim);text-transform:uppercase;}
+#stealth-close-btn{cursor:pointer;color:var(--dim);font-size:13px;padding:2px 7px;border-radius:3px;transition:0.15s;border:1px solid transparent;}
+#stealth-close-btn:hover{color:var(--text-bright);border-color:var(--glass-border-bright);}
+#stealth-toolbar{
+  display:flex;align-items:center;gap:7px;padding:7px 12px;
+  background:rgba(3,3,11,0.88);border-bottom:1px solid var(--glass-border);flex-shrink:0;
+}
+.stl-nav{
+  background:rgba(255,255,255,0.05);border:1px solid var(--glass-border);
+  color:var(--dim);border-radius:5px;padding:5px 11px;font-size:13px;cursor:pointer;
+  transition:0.15s;flex-shrink:0;min-width:34px;text-align:center;line-height:1;
+}
+.stl-nav:hover{border-color:rgba(0,255,170,0.4);color:var(--green);background:rgba(0,255,170,0.08);}
+.stl-nav:disabled,.stl-nav.loading{opacity:0.4;pointer-events:none;}
+#stealth-url{
+  flex:1;background:rgba(10,10,25,0.9);border:1px solid var(--glass-border);
+  border-radius:20px;color:var(--text-bright);font-size:12px;
+  padding:6px 14px;outline:none;transition:border-color 0.15s,box-shadow 0.15s;
+}
+#stealth-url:focus{border-color:rgba(0,255,170,0.5);box-shadow:0 0 0 3px rgba(0,255,170,0.07),0 0 16px rgba(0,255,170,0.05);}
+#stealth-url::placeholder{color:var(--dim);}
+#stealth-go{
+  background:linear-gradient(135deg,rgba(0,255,170,0.15),rgba(0,200,255,0.12));
+  border:1px solid rgba(0,255,170,0.4);color:var(--green);
+  border-radius:5px;padding:6px 16px;font-size:11px;letter-spacing:1px;
+  font-weight:700;cursor:pointer;transition:0.15s;flex-shrink:0;
+}
+#stealth-go:hover{background:linear-gradient(135deg,rgba(0,255,170,0.28),rgba(0,200,255,0.22));box-shadow:0 0 12px rgba(0,255,170,0.2);}
+#stealth-shield{
+  font-size:11px;letter-spacing:1px;color:var(--green);opacity:0.7;
+  padding:4px 8px;border:1px solid rgba(0,255,170,0.2);border-radius:4px;
+  white-space:nowrap;flex-shrink:0;background:rgba(0,255,170,0.04);
+}
+#stealth-viewport{
+  flex:1;position:relative;overflow:hidden;background:#111;cursor:crosshair;
+  display:flex;align-items:center;justify-content:center;
+}
+#stealth-view{
+  max-width:100%;max-height:100%;object-fit:contain;display:block;
+  image-rendering:auto;user-select:none;-webkit-user-drag:none;
+}
+#stealth-loading{
+  position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+  flex-direction:column;gap:14px;background:rgba(4,4,14,0.88);z-index:10;
+}
+#stealth-loading.on{display:flex;}
+.stl-spinner{
+  width:34px;height:34px;border-radius:50%;
+  border:3px solid rgba(0,255,170,0.15);border-top-color:var(--green);
+  animation:spin 0.75s linear infinite;
+}
+.stl-load-text{font-size:11px;letter-spacing:2px;color:var(--green);text-transform:uppercase;opacity:0.7;}
+#stealth-empty{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  flex-direction:column;gap:14px;pointer-events:none;
+}
+#stealth-empty.hidden{display:none;}
+.stl-empty-icon{font-size:52px;opacity:0.18;}
+.stl-empty-text{font-size:11px;letter-spacing:3px;color:var(--dim);text-transform:uppercase;}
+#stealth-statusbar{
+  height:22px;display:flex;align-items:center;padding:0 12px;gap:10px;
+  font-size:9.5px;color:var(--dim);background:rgba(0,0,0,0.55);
+  border-top:1px solid var(--glass-border);flex-shrink:0;
+}
+#stl-status-url{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+#stl-status-hint{color:var(--dim2);font-size:9px;flex-shrink:0;white-space:nowrap;}
+.stl-error-banner{
+  position:absolute;top:0;left:0;right:0;background:rgba(255,60,60,0.18);
+  border-bottom:1px solid rgba(255,60,60,0.35);padding:8px 14px;font-size:11px;
+  color:#ff8888;display:none;z-index:20;
+}
+.stl-error-banner.on{display:block;}
+
+/* ══════════════════════ BROWSER PANEL ══════════════════════ */
+#browser-panel{
+  position:fixed;top:38px;right:-540px;width:540px;
+  height:calc(100vh - 60px);
+  background:rgba(4,4,14,0.97);
+  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+  border-left:1px solid var(--glass-border-bright);
+  border-bottom:1px solid var(--glass-border);
+  box-shadow:-8px 0 50px rgba(0,0,0,0.8),0 0 0 1px rgba(0,170,255,0.04);
+  display:flex;flex-direction:column;z-index:200;
+  transition:right 0.26s cubic-bezier(0.4,0,0.2,1);
+  overflow:hidden;
+}
+#browser-panel.open{right:0;}
+#browser-hdr{
+  padding:5px 10px;background:rgba(0,0,0,0.5);
+  border-bottom:1px solid var(--glass-border);
+  display:flex;align-items:center;gap:8px;
+  font-size:9.5px;letter-spacing:1.8px;color:var(--blue);
+  text-transform:uppercase;flex-shrink:0;
+}
+#browser-hdr-title{flex:1;font-weight:600;text-shadow:0 0 10px rgba(0,170,255,0.35);}
+#browser-hdr-close{cursor:pointer;color:var(--dim);font-size:13px;padding:2px 6px;border-radius:3px;transition:0.15s;border:1px solid transparent;}
+#browser-hdr-close:hover{color:var(--text-bright);border-color:var(--glass-border-bright);}
+#browser-bar{
+  display:flex;align-items:center;gap:5px;padding:5px 8px;
+  background:rgba(0,0,0,0.38);border-bottom:1px solid var(--glass-border);flex-shrink:0;
+}
+.brow-nav{
+  background:rgba(255,255,255,0.05);border:1px solid var(--glass-border);
+  color:var(--dim);border-radius:4px;padding:4px 9px;font-size:12px;cursor:pointer;
+  transition:0.15s;flex-shrink:0;min-width:30px;text-align:center;
+}
+.brow-nav:hover{border-color:rgba(0,170,255,0.4);color:var(--blue);background:rgba(0,170,255,0.1);}
+#browser-url{
+  flex:1;background:rgba(255,255,255,0.05);border:1px solid var(--glass-border);
+  border-radius:var(--radius-sm);color:var(--text-bright);font-size:11.5px;
+  padding:5px 10px;outline:none;transition:border-color 0.15s,box-shadow 0.15s;
+}
+#browser-url:focus{border-color:rgba(0,170,255,0.5);box-shadow:0 0 0 3px rgba(0,170,255,0.07);}
+#browser-url::placeholder{color:var(--dim);}
+#browser-go{
+  background:rgba(0,170,255,0.14);border:1px solid rgba(0,170,255,0.35);color:var(--blue);
+  border-radius:var(--radius-sm);padding:5px 14px;font-size:10.5px;letter-spacing:1px;
+  font-weight:700;cursor:pointer;transition:0.15s;flex-shrink:0;
+}
+#browser-go:hover{background:rgba(0,170,255,0.28);box-shadow:0 0 10px rgba(0,170,255,0.2);}
+#browser-content{flex:1;position:relative;overflow:hidden;background:#fff;}
+#browser-iframe{width:100%;height:100%;border:none;display:block;}
+#browser-text{
+  position:absolute;inset:0;background:rgba(4,4,14,0.98);
+  color:var(--text);font-size:11.5px;line-height:1.7;
+  padding:16px;overflow-y:auto;display:none;
+  white-space:pre-wrap;word-break:break-word;
+}
+#browser-text.visible{display:block;}
+#browser-foot{
+  padding:4px 10px;font-size:9.5px;color:var(--dim);
+  background:rgba(0,0,0,0.48);border-top:1px solid var(--glass-border);
+  display:flex;align-items:center;gap:7px;flex-shrink:0;min-height:22px;
+}
+#browser-foot-text{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+#browser-spark-btn{
+  cursor:pointer;color:var(--blue);font-size:9px;letter-spacing:0.5px;
+  padding:2px 7px;border-radius:3px;border:1px solid rgba(0,170,255,0.3);
+  background:rgba(0,170,255,0.06);transition:0.15s;flex-shrink:0;white-space:nowrap;
+}
+#browser-spark-btn:hover{background:rgba(0,170,255,0.16);}
+#browser-ask-page-btn{
+  cursor:pointer;color:var(--green);font-size:9px;letter-spacing:0.5px;
+  padding:2px 7px;border-radius:3px;border:1px solid rgba(0,255,170,0.3);
+  background:rgba(0,255,170,0.06);transition:0.15s;flex-shrink:0;white-space:nowrap;
+}
+#browser-ask-page-btn:hover{background:rgba(0,255,170,0.16);}
+#brow-selection-popup{
+  position:fixed;z-index:9999;display:none;
+  background:rgba(4,4,18,0.97);border:1px solid rgba(0,255,170,0.45);
+  border-radius:6px;box-shadow:0 4px 24px rgba(0,0,0,0.7),0 0 12px rgba(0,255,170,0.12);
+  padding:4px 3px;gap:3px;flex-direction:column;min-width:140px;
+}
+#brow-selection-popup.on{display:flex;}
+.brow-sel-btn{
+  cursor:pointer;padding:5px 12px;font-size:10.5px;color:var(--text-bright);
+  border-radius:4px;transition:0.12s;text-align:left;white-space:nowrap;
+  background:transparent;border:none;font-family:inherit;letter-spacing:0.3px;
+}
+.brow-sel-btn:hover{background:rgba(0,255,170,0.1);color:var(--green);}
+.brow-sel-preview{
+  font-size:9.5px;color:var(--dim);padding:4px 12px 2px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px;
+  border-bottom:1px solid var(--glass-border);margin-bottom:2px;
+}
+.brow-spinner{
+  display:none;width:8px;height:8px;border-radius:50%;flex-shrink:0;
+  border:1.5px solid var(--dim2);border-top-color:var(--blue);
+  animation:spin 0.7s linear infinite;
+}
+.brow-spinner.on{display:inline-block;}
+@keyframes spin{to{transform:rotate(360deg)}}
+
 /* ══════════════════════ MOBILE ══════════════════════ */
 @media(max-width:767px){
   #taskbar{padding:0 10px;gap:6px;height:46px;}
@@ -677,7 +882,7 @@ body{background:transparent;color:var(--green);height:100vh;height:100dvh;displa
 <div id="taskbar">
   <span class="logo">⚡ JL_OS</span>
   <div class="tb-sep"></div>
-  <span class="tb-label">Persona</span>
+  <span class="tb-label">JL Agent</span>
   <select id="persona-select"><option>SparkByte</option></select>
   <div class="tb-sep"></div>
   <span class="tb-label">Model</span>
@@ -707,6 +912,8 @@ body{background:transparent;color:var(--green);height:100vh;height:100dvh;displa
   <div class="tb-sep"></div>
   <span style="cursor:pointer;font-size:14px;color:var(--dim);transition:0.15s;" onclick="openSettings()" title="Settings (Ctrl+,)">⚙</span>
   <span style="cursor:pointer;font-size:12px;color:var(--dim);transition:0.15s;letter-spacing:1px;" onclick="openHistory()" title="Session History">◷ HISTORY</span>
+  <button id="browser-toggle-btn" onclick="toggleBrowserPanel()" title="Web Browser (Ctrl+B)" style="background:rgba(0,170,255,0.08);border:1px solid rgba(0,170,255,0.3);color:#00aaff;border-radius:3px;padding:1px 7px;font-family:inherit;font-size:10px;cursor:pointer;letter-spacing:1px;transition:0.15s;" onmouseover="this.style.background='rgba(0,170,255,0.2)'" onmouseout="this.style.background='rgba(0,170,255,0.08)'">🌐 WEB</button>
+  <button id="stealth-toggle-btn" onclick="toggleStealth()" title="Stealth Browser — routed through Playwright backend (Ctrl+Shift+B)" style="background:rgba(0,255,170,0.06);border:1px solid rgba(0,255,170,0.25);color:var(--green);border-radius:3px;padding:1px 7px;font-family:inherit;font-size:10px;cursor:pointer;letter-spacing:1px;transition:0.15s;" onmouseover="this.style.background='rgba(0,255,170,0.16)'" onmouseout="this.style.background='rgba(0,255,170,0.06)'">🕵️ STEALTH</button>
   <button id="focus-btn" onclick="toggleFocusMode()" title="Focus mode — chat only" style="background:rgba(0,200,255,0.1);border:1px solid rgba(0,200,255,0.3);color:#00c8ff;border-radius:3px;padding:1px 7px;font-family:inherit;font-size:10px;cursor:pointer;letter-spacing:1px;transition:0.15s;" onmouseover="this.style.background='rgba(0,200,255,0.22)'" onmouseout="this.style.background='rgba(0,200,255,0.1)'">◈ FOCUS</button>
   <button id="relaunch-btn" onclick="relaunchServer()" title="Relaunch server (reconnects automatically)" style="background:rgba(255,80,0,0.15);border:1px solid rgba(255,80,0,0.35);color:#ff6030;border-radius:3px;padding:1px 7px;font-family:inherit;font-size:10px;cursor:pointer;letter-spacing:1px;transition:0.15s;" onmouseover="this.style.background='rgba(255,80,0,0.28)'" onmouseout="this.style.background='rgba(255,80,0,0.15)'">↺ RELAUNCH</button>
   <span style="color:var(--dim);font-size:10px;" id="clock"></span>
@@ -960,7 +1167,7 @@ body{background:transparent;color:var(--green);height:100vh;height:100dvh;displa
         <div class="sm-hint" id="backend-probe-summary">Backend probe pending…</div>
       </div>
       <div class="sm-section">
-        <label>Active Persona</label>
+        <label>Active JL Agent</label>
         <div class="sm-row">
           <select id="settings-persona"></select>
         </div>
@@ -1110,7 +1317,7 @@ body{background:transparent;color:var(--green);height:100vh;height:100dvh;displa
       </div>
 
       <div class="tl-section">
-        <div class="tl-label">PERSONA · MODEL</div>
+        <div class="tl-label">JL AGENT · MODEL</div>
         <div class="tl-val" id="tl-persona-model">—</div>
       </div>
     </div>
@@ -1127,6 +1334,79 @@ body{background:transparent;color:var(--green);height:100vh;height:100dvh;displa
     <div class="hm-body">
       <div id="history-session-list"><div class="hm-empty">Loading...</div></div>
       <div id="history-turn-view"><div class="hm-empty">Select a session to view turns.</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- BROWSER PANEL -->
+<div id="browser-panel">
+  <div id="browser-hdr">
+    <span id="browser-hdr-title">🌐 BROWSER</span>
+    <span id="browser-hdr-close" onclick="toggleBrowserPanel()" title="Close (Ctrl+B)">✕</span>
+  </div>
+  <div id="browser-bar">
+    <button class="brow-nav" onclick="browserBack()" title="Back">←</button>
+    <button class="brow-nav" onclick="browserForward()" title="Forward">→</button>
+    <button class="brow-nav" onclick="browserRefresh()" title="Refresh">↻</button>
+    <input type="text" id="browser-url" placeholder="Search or enter URL…" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
+    <button id="browser-go" onclick="browserGo()">GO</button>
+  </div>
+  <div id="browser-content">
+    <iframe id="browser-iframe" sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-top-navigation"></iframe>
+    <div id="browser-text"></div>
+  </div>
+  <div id="browser-foot">
+    <span class="brow-spinner" id="brow-spin"></span>
+    <span id="browser-foot-text">Ready — type a URL or search above</span>
+    <button id="browser-ask-page-btn" onclick="browserAskPage()" title="Send this whole page to Spark as context">💬 Ask Spark</button>
+    <button id="browser-spark-btn" onclick="browserFetchViaSpark()" title="Use backend Playwright to fetch page text (bypasses iframe restrictions)">⚡ Fetch via Spark</button>
+  </div>
+</div>
+
+<!-- BROWSER SELECTION POPUP -->
+<div id="brow-selection-popup">
+  <div class="brow-sel-preview" id="brow-sel-preview"></div>
+  <button class="brow-sel-btn" onclick="browSelAsk()">💬 Ask Spark about this</button>
+  <button class="brow-sel-btn" onclick="browSelSend()">📋 Copy to chat input</button>
+  <button class="brow-sel-btn" onclick="browSelDismiss()">✕ Dismiss</button>
+</div>
+
+<!-- STEALTH BROWSER OVERLAY -->
+<div id="stealth-overlay" onclick="stlOverlayClick(event)">
+  <div id="stealth-window">
+    <div id="stealth-titlebar">
+      <span class="stl-dot red" onclick="toggleStealth()" title="Close" style="cursor:pointer;"></span>
+      <span class="stl-dot yellow"></span>
+      <span class="stl-dot green"></span>
+      <span id="stealth-titlebar-label">🕵️ &nbsp; SPARKBYTE STEALTH BROWSER</span>
+      <span id="stealth-close-btn" onclick="toggleStealth()">✕ close</span>
+    </div>
+    <div id="stealth-toolbar">
+      <button class="stl-nav" id="stl-back" onclick="stlAct('back')" title="Back">←</button>
+      <button class="stl-nav" id="stl-fwd" onclick="stlAct('forward')" title="Forward">→</button>
+      <button class="stl-nav" id="stl-ref" onclick="stlAct('refresh')" title="Reload">↻</button>
+      <input id="stealth-url" type="text" placeholder="https://…   or just type a search" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false"
+        onkeydown="if(event.key==='Enter')stlNav()">
+      <button id="stealth-go" onclick="stlNav()">GO</button>
+      <span id="stealth-shield" title="All traffic routes through Playwright stealth Chromium">🛡 STEALTH</span>
+    </div>
+    <div id="stealth-viewport">
+      <div id="stealth-empty">
+        <span class="stl-empty-icon">🕵️</span>
+        <span class="stl-empty-text">Enter a URL and press Go</span>
+      </div>
+      <img id="stealth-view" src="" alt="" draggable="false"
+        onclick="stlClick(event)"
+        onwheel="stlWheel(event)">
+      <div id="stealth-loading">
+        <span class="stl-spinner"></span>
+        <span class="stl-load-text">Navigating…</span>
+      </div>
+      <div class="stl-error-banner" id="stl-err-banner"></div>
+    </div>
+    <div id="stealth-statusbar">
+      <span id="stl-status-url">—</span>
+      <span id="stl-status-hint">click = passthrough · scroll = scroll · shift+click = type</span>
     </div>
   </div>
 </div>
@@ -1342,6 +1622,248 @@ function abortGeneration(){
   _setGenerating(false);
   _toolActiveClear();
 }
+
+/* ====== BROWSER PANEL ====== */
+let _browHistory=[], _browIdx=-1, _browOpen=false;
+
+function toggleBrowserPanel(){
+  _browOpen=!_browOpen;
+  $('browser-panel').classList.toggle('open',_browOpen);
+  const btn=$('browser-toggle-btn');
+  if(btn){btn.style.background=_browOpen?'rgba(0,170,255,0.22)':'rgba(0,170,255,0.08)';btn.style.borderColor=_browOpen?'#00aaff':'rgba(0,170,255,0.3)';}
+  if(_browOpen) setTimeout(()=>$('browser-url').focus(),280);
+}
+
+function _browNorm(s){
+  s=s.trim();
+  if(!s)return'';
+  if(!/^https?:\/\//i.test(s)){
+    if(/\s/.test(s)||!s.includes('.'))return'https://duckduckgo.com/?q='+encodeURIComponent(s);
+    return'https://'+s;
+  }
+  return s;
+}
+
+function browserGo(){
+  const url=_browNorm($('browser-url').value);
+  if(!url)return;
+  $('browser-url').value=url;
+  _browLoad(url,true);
+}
+
+function _browLoad(url,push){
+  const iframe=$('browser-iframe'),spin=$('brow-spin'),txt=$('browser-text'),ft=$('browser-foot-text');
+  txt.classList.remove('visible');
+  spin.classList.add('on');
+  ft.textContent='Loading…';
+  $('browser-url').value=url;
+  if(push){_browHistory=_browHistory.slice(0,_browIdx+1);_browHistory.push(url);_browIdx=_browHistory.length-1;}
+  iframe.onload=()=>{
+    spin.classList.remove('on');
+    let finalUrl=url;
+    try{if(iframe.contentWindow.location.href!=='about:blank')finalUrl=iframe.contentWindow.location.href;}catch(e){}
+    ft.textContent=finalUrl;
+    $('browser-url').value=finalUrl;
+  };
+  iframe.onerror=()=>{spin.classList.remove('on');ft.textContent='iframe blocked — use ⚡ Fetch via Spark';};
+  iframe.src=url;
+}
+
+function browserBack(){if(_browIdx>0){_browIdx--;_browLoad(_browHistory[_browIdx],false);}}
+function browserForward(){if(_browIdx<_browHistory.length-1){_browIdx++;_browLoad(_browHistory[_browIdx],false);}}
+function browserRefresh(){const u=$('browser-url').value;if(u&&u!=='about:blank'){$('browser-iframe').src=u;$('brow-spin').classList.add('on');$('browser-foot-text').textContent='Refreshing…';}}
+
+function browserFetchViaSpark(){
+  const url=($('browser-url').value.trim()||$('browser-iframe').src||'').replace(/^about:blank$/,'');
+  if(!url){$('browser-foot-text').textContent='Enter a URL first';return;}
+  $('brow-spin').classList.add('on');
+  $('browser-foot-text').textContent='Fetching via Playwright…';
+  send({type:'browser_fetch',url});
+}
+
+/* ── Ask Spark about the whole current page ── */
+function browserAskPage(){
+  const txt=$('browser-text');
+  const content=(txt.textContent||'').trim();
+  if(!content){$('browser-foot-text').textContent='Fetch page text first (⚡ Fetch via Spark)';return;}
+  const url=$('browser-url').value||'this page';
+  const msg='[Page: '+url+']\n\n'+content.slice(0,6000)+(content.length>6000?'\n…(truncated)':'');
+  chatInput.value=msg;
+  chatInput.focus();
+  $('browser-foot-text').textContent='Page loaded into chat — add your question and send!';
+}
+
+/* ── Selection popup ── */
+let _browSelText='';
+const _browSelPopup=$('brow-selection-popup');
+
+function _browShowSelPopup(x, y, selectedText){
+  _browSelText=selectedText.trim();
+  if(!_browSelText)return;
+  const preview=_browSelText.length>60?_browSelText.slice(0,60)+'…':_browSelText;
+  $('brow-sel-preview').textContent='"'+preview+'"';
+  _browSelPopup.style.left=Math.min(x, window.innerWidth-240)+'px';
+  _browSelPopup.style.top=(y+8)+'px';
+  _browSelPopup.classList.add('on');
+}
+
+function browSelDismiss(){
+  _browSelPopup.classList.remove('on');
+  _browSelText='';
+}
+
+function browSelAsk(){
+  if(!_browSelText)return;
+  const url=$('browser-url').value||'the browser';
+  const msg='From '+url+': "'+_browSelText+'" — what do you make of this?';
+  browSelDismiss();
+  chatInput.value=msg;
+  chatInput.focus();
+  // Auto-send immediately
+  chatInput.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
+}
+
+function browSelSend(){
+  if(!_browSelText)return;
+  const url=$('browser-url').value||'the browser';
+  chatInput.value='From '+url+': "'+_browSelText+'"';
+  browSelDismiss();
+  chatInput.focus();
+}
+
+// Listen for text selections inside the browser text panel
+$('browser-text').addEventListener('mouseup', e=>{
+  setTimeout(()=>{
+    const sel=window.getSelection();
+    const selTxt=sel?sel.toString().trim():'';
+    if(selTxt.length>3){
+      _browShowSelPopup(e.clientX, e.clientY, selTxt);
+    } else {
+      browSelDismiss();
+    }
+  },10);
+});
+
+// Dismiss popup on outside click
+document.addEventListener('mousedown', e=>{
+  if(!_browSelPopup.contains(e.target))browSelDismiss();
+});
+
+$('browser-url').addEventListener('keydown',e=>{if(e.key==='Enter')browserGo();});
+document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key==='b'&&!e.target.matches('input,textarea')){e.preventDefault();toggleBrowserPanel();}
+  if((e.ctrlKey||e.metaKey)&&e.shiftKey&&e.key==='B'&&!e.target.matches('input,textarea')){e.preventDefault();toggleStealth();}
+  if(e.key==='Escape'&&$('stealth-overlay').classList.contains('open')){toggleStealth();}
+});
+
+/* ══════ STEALTH BROWSER ══════ */
+let _stlLoading=false;
+const _stlView=$('stealth-view'), _stlLoaderEl=$('stealth-loading'), _stlEmpty=$('stealth-empty');
+const _stlErr=$('stl-err-banner'), _stlStatusUrl=$('stl-status-url');
+const _stlUrlInput=$('stealth-url');
+
+function toggleStealth(){
+  const ov=$('stealth-overlay');
+  ov.classList.toggle('open');
+  const btn=$('stealth-toggle-btn');
+  if(ov.classList.contains('open')){
+    btn.style.background='rgba(0,255,170,0.2)';btn.style.borderColor='rgba(0,255,170,0.55)';
+    setTimeout(()=>_stlUrlInput.focus(),60);
+  } else {
+    btn.style.background='rgba(0,255,170,0.06)';btn.style.borderColor='rgba(0,255,170,0.25)';
+  }
+}
+
+function stlOverlayClick(ev){
+  // Close if clicking the dark backdrop outside the window
+  if(ev.target===$('stealth-overlay'))toggleStealth();
+}
+
+function _stlSetLoading(on, label){
+  _stlLoading=on;
+  _stlLoaderEl.classList.toggle('on',on);
+  if(on){_stlLoaderEl.querySelector('.stl-load-text').textContent=label||'Loading…';}
+  ['stl-back','stl-fwd','stl-ref'].forEach(id=>{$(id).classList.toggle('loading',on);});
+  $('stealth-go').disabled=on;
+}
+
+function _stlApplyFrame(d){
+  _stlSetLoading(false);
+  _stlErr.classList.remove('on');
+  if(d.error){
+    _stlErr.textContent='⚠ '+d.error;_stlErr.classList.add('on');
+    return;
+  }
+  if(d.img_b64){
+    _stlView.src='data:image/png;base64,'+d.img_b64;
+    _stlView.style.display='block';
+    _stlEmpty.classList.add('hidden');
+  }
+  const url=d.url||d.final_url||'';
+  if(url){_stlStatusUrl.textContent=url;_stlUrlInput.value=url;}
+  const title=d.title||url;
+  if(title)document.title=title+' — Stealth';
+}
+
+function stlNav(){
+  let url=_stlUrlInput.value.trim();
+  if(!url)return;
+  // Bare words → DuckDuckGo
+  if(!/^https?:\/\//i.test(url)&&!url.startsWith('about:')&&!url.includes('.')){
+    url='https://duckduckgo.com/?q='+encodeURIComponent(url);
+  } else if(!/^https?:\/\//i.test(url)){
+    url='https://'+url;
+  }
+  _stlUrlInput.value=url;
+  _stlSetLoading(true,'Navigating…');
+  send({type:'stealth_nav',url});
+}
+
+function stlAct(action, extra){
+  if(_stlLoading)return;
+  _stlSetLoading(true,action==='refresh'?'Reloading…':action==='back'?'Going back…':action==='forward'?'Going forward…':'…');
+  send(Object.assign({type:'stealth_act',action},extra||{}));
+}
+
+function stlClick(ev){
+  if(_stlLoading)return;
+  const img=_stlView;
+  const rect=img.getBoundingClientRect();
+  // Map display coords to Playwright viewport coords
+  const scaleX=1280/rect.width;
+  const scaleY=800/rect.height;
+  const x=Math.round((ev.clientX-rect.left)*scaleX);
+  const y=Math.round((ev.clientY-rect.top)*scaleY);
+  if(ev.shiftKey){
+    // Shift+click → prompt for text to type at that position
+    const txt=window.prompt('Type text at this position:');
+    if(txt===null||txt==='')return;
+    _stlSetLoading(true,'Typing…');
+    send({type:'stealth_act',action:'type_at',x,y,text:txt});
+    return;
+  }
+  _stlSetLoading(true,'Clicking…');
+  send({type:'stealth_act',action:'click_xy',x,y});
+}
+
+function stlWheel(ev){
+  ev.preventDefault();
+  if(_stlLoading)return;
+  const dy=ev.deltaY>0?300:-300;
+  _stlSetLoading(true,'Scrolling…');
+  send({type:'stealth_act',action:'scroll',dy});
+}
+
+_stlView.addEventListener('keydown',ev=>{
+  // Keyboard passthrough (arrow keys, Enter, Tab, Backspace)
+  const map={'ArrowUp':'ArrowUp','ArrowDown':'ArrowDown','ArrowLeft':'ArrowLeft','ArrowRight':'ArrowRight','Enter':'Enter','Tab':'Tab','Backspace':'Backspace','Escape':'Escape'};
+  if(map[ev.key]){
+    ev.preventDefault();
+    send({type:'stealth_act',action:'key',key:map[ev.key]});
+  }
+});
+
+
 function connect(){
   ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
   ws.onopen=()=>{
@@ -1366,7 +1888,12 @@ function connect(){
       const answer=window.confirm(prompt);
       send({type:'confirm_response',id:d.id,answer});
     }
-    else if(d.type==='spark'){_setGenerating(false);_toolActiveClear();appendChat('<div class="msg spark">'+marked.parse(d.text)+'</div>');}
+    else if(d.type==='spark'){
+      _setGenerating(false);_toolActiveClear();
+      const afterThink = !!window._lastThinkId;
+      window._lastThinkId = null;
+      appendChat('<div class="msg spark'+(afterThink?' after-think':'')+'">'+marked.parse(d.text)+'</div>');
+    }
     else if(d.type==='tool'){appendChat('<div class="tool">⚡ '+d.text+'</div>');}
     else if(d.type==='tool_start'){_toolActiveStart(d.name);}
     else if(d.type==='tool_done'){_toolActiveDone(d.name,d.preview,d.elapsed_ms);}
@@ -1392,11 +1919,12 @@ function connect(){
         const el=document.getElementById(id);
         if(el){
           el.classList.add('done');
-          el.querySelector('.think-label').textContent='Reasoning trace (' + (d.chars||'?') + ' chars)';
-          el.querySelector('.think-toggle').textContent='▶ expand';
+          el.querySelector('.think-label').textContent='🧠 Reasoning (' + (d.chars||'?') + ' chars) — click to expand';
+          el.querySelector('.think-toggle').textContent='▶';
           if(d.text) el.querySelector('.think-body').textContent=d.text;
         }
       }
+      // do NOT null _lastThinkId here — spark reply will consume it
     }
     else if(d.type==='builder_tree'){renderTree(d.files);}
     else if(d.type==='builder_file'){onFileLoaded(d.content);}
@@ -1441,6 +1969,17 @@ function connect(){
     else if(d.type==='image_url'){const u=d.url||d.image_url||'';appendChat('<div class="msg spark"><img src="'+escapeHtml(u)+'" style="max-width:100%;border-radius:8px"/></div>');}
     else if(d.type==='input_image'){const src=d.data_url||(d.mime&&d.data?('data:'+d.mime+';base64,'+d.data):(d.data||''));if(src)appendChat('<div class="msg user"><img src="'+escapeHtml(src)+'" style="max-width:100%;border-radius:8px"/></div>');}
     else if(d.type==='object'){appendChat('<div class="tool"><pre style="white-space:pre-wrap;margin:0">'+escapeHtml(JSON.stringify(d.data??d.object??d,null,2))+'</pre></div>');}
+    else if(d.type==='browser_result'){
+      const spin=$('brow-spin'),txt=$('browser-text'),ft=$('browser-foot-text');
+      spin.classList.remove('on');
+      if(d.error){txt.innerHTML='<span style="color:#f77">Error: '+escHtml(d.error)+'</span>';}
+      else{txt.textContent=d.content||'';}
+      txt.classList.add('visible');
+      const fu=d.final_url||d.url||'';
+      ft.textContent=fu?'✓ '+fu:'✓ Done';
+      if(fu)$('browser-url').value=fu;
+    }
+    else if(d.type==='stealth_frame'){_stlApplyFrame(d);}
     else{console.debug('[ws] unhandled type',d.type,d);}
   };
 }
@@ -2032,7 +2571,7 @@ function _handleCardFile(f){
   $('card-badge-name').textContent=f.name;
   $('card-badge').classList.add('visible');
   $('chat-input').placeholder='Press Enter to crunch '+f.name+' →';
-  appendChat('<div class="tool">🃏 Card queued: <b>'+f.name+'</b> — press Enter to crunch it into a persona</div>');
+  appendChat('<div class="tool">🃏 Card queued: <b>'+f.name+'</b> — press Enter to crunch it into a JL agent</div>');
 }
 
 function clearCardDrop(){

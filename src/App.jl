@@ -46,9 +46,9 @@ end
 
 function runtime_root()
     for candidate in _runtime_candidates()
-        isfile(joinpath(candidate, "data", "personas", "Personas.mpf.json")) && return candidate
+        isfile(joinpath(candidate, "data", "agents", "Agents.mpf.json")) && return candidate
     end
-    error("Could not locate SparkByte runtime root. Set SPARKBYTE_ROOT to a folder containing data/personas/Personas.mpf.json.")
+    error("Could not locate SparkByte runtime root. Set SPARKBYTE_ROOT to a folder containing data/agents/Agents.mpf.json.")
 end
 
 function state_root(root::String=runtime_root())
@@ -81,14 +81,21 @@ function _open_memory_db(root::String)
         id INTEGER PRIMARY KEY, name TEXT UNIQUE, source TEXT, description TEXT,
         parameters TEXT, is_dynamic INTEGER DEFAULT 0, forged_at TEXT, last_used TEXT, call_count INTEGER DEFAULT 0)""")
     SQLite.execute(db, """CREATE TABLE IF NOT EXISTS thoughts (
-        id INTEGER PRIMARY KEY, timestamp TEXT, persona TEXT DEFAULT 'SparkByte',
+        id INTEGER PRIMARY KEY, timestamp TEXT, jl_agent TEXT DEFAULT 'SparkByte',
         context TEXT, thought TEXT, mood TEXT, gait TEXT,
         type TEXT DEFAULT 'diary', model TEXT DEFAULT '')""")
     SQLite.execute(db, """CREATE TABLE IF NOT EXISTS knowledge (
         id INTEGER PRIMARY KEY, domain TEXT, topic TEXT, content TEXT, source TEXT, learned TEXT)""")
-    SQLite.execute(db, """CREATE TABLE IF NOT EXISTS personas (
-        id INTEGER PRIMARY KEY, name TEXT UNIQUE, description TEXT, personality TEXT,
+    SQLite.execute(db, """CREATE TABLE IF NOT EXISTS agents (
+        id INTEGER PRIMARY KEY, name TEXT UNIQUE, description TEXT, agent_profile TEXT,
         tone TEXT, boot_prompt TEXT, active INTEGER DEFAULT 0, last_used TEXT)""")
+    try
+        cols = DataFrame(SQLite.DBInterface.execute(db, "PRAGMA table_info(agents)"))
+        has_profile = any(string(getproperty(r, :name)) == "agent_profile" for r in eachrow(cols))
+        has_profile || SQLite.execute(db, "ALTER TABLE agents ADD COLUMN agent_profile TEXT")
+    catch e
+        @warn "Agent table migration check failed" exception=(e, catch_backtrace())
+    end
     SQLite.execute(db, """CREATE TABLE IF NOT EXISTS behavior_states (
         id INTEGER PRIMARY KEY, state_id TEXT UNIQUE, name TEXT, intensity INTEGER, control INTEGER,
         expressiveness REAL, pacing TEXT, tone_bias TEXT, memory_strictness TEXT, trigger_conditions TEXT)""")
@@ -99,17 +106,17 @@ function _open_memory_db(root::String)
         id INTEGER PRIMARY KEY, url TEXT, fetched_at TEXT, content TEXT, summary TEXT, tags TEXT)""")
     SQLite.execute(db, """CREATE TABLE IF NOT EXISTS tool_usage_log (
         id INTEGER PRIMARY KEY, timestamp TEXT, tool_name TEXT, args_json TEXT,
-        result_json TEXT, duration_ms INTEGER, persona TEXT, session_id TEXT)""")
+        result_json TEXT, duration_ms INTEGER, jl_agent TEXT, session_id TEXT)""")
     SQLite.execute(db, """CREATE TABLE IF NOT EXISTS telemetry (
         id INTEGER PRIMARY KEY, timestamp TEXT, session_id TEXT, event TEXT,
-        turn_number INTEGER DEFAULT 0, model TEXT DEFAULT '', persona TEXT DEFAULT '',
+        turn_number INTEGER DEFAULT 0, model TEXT DEFAULT '', jl_agent TEXT DEFAULT '',
         data_json TEXT)""")
     SQLite.execute(db, """CREATE TABLE IF NOT EXISTS turn_snapshots (
         id INTEGER PRIMARY KEY,
         timestamp TEXT,
         session_id TEXT,
         turn_number INTEGER,
-        persona TEXT,
+        jl_agent TEXT,
         model TEXT,
         gait TEXT,
         rhythm_mode TEXT,
@@ -144,7 +151,11 @@ function _start_browser_context()
     # Override with SPARKBYTE_CHROME_PROFILE env var. Nuke the folder to reset.
     user_data_dir = get(ENV, "SPARKBYTE_CHROME_PROFILE",
         joinpath(homedir(), ".sparkbyte", "chromium_profile"))
-    try; mkpath(user_data_dir); catch; end
+    try
+        mkpath(user_data_dir)
+    catch e
+        @warn "Failed to create SparkByte Chrome profile directory" path=user_data_dir exception=(e, catch_backtrace())
+    end
 
     ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " *
          "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
@@ -325,7 +336,7 @@ function _seed_self_context!(db::SQLite.DB, root::String)
         "src/App.jl",
         "src/JLEngine/Core.jl",
         "src/JLEngine/Types.jl",
-        "data/personas/Personas.mpf.json",
+        "data/agents/Agents.mpf.json",
     ]
     SQLite.execute(db, "DELETE FROM memory WHERE tag = 'self_src'")
     for path in key_files
@@ -361,37 +372,38 @@ function _seed_self_context!(db::SQLite.DB, root::String)
         println("  ✅ Behavior states: $(length(get(bs_data, "states", [])) * 4) cells indexed")
     end
 
-    personas_dir = joinpath(root, "data", "personas")
-    mpf_path = joinpath(personas_dir, "Personas.mpf.json")
-    SQLite.execute(db, "DELETE FROM personas")
+    agents_dir = joinpath(root, "data", "agents")
+    mpf_path = joinpath(agents_dir, "Agents.mpf.json")
+    SQLite.execute(db, "DELETE FROM agents")
     if isfile(mpf_path)
         registry = JSON.parsefile(mpf_path)
-        for (persona_name, persona_meta) in registry
-            persona_file = joinpath(personas_dir, get(persona_meta, "persona_file", ""))
-            isfile(persona_file) || continue
-            fat = JSON.parsefile(persona_file)
+        for (agent_name, agent_meta) in registry
+            agent_file = joinpath(agents_dir, get(agent_meta, "agent_file", ""))
+            isfile(agent_file) || continue
+            fat = JSON.parsefile(agent_file)
             identity = get(fat, "identity", Dict())
             boot = ""
             if haskey(fat, "llm_profiles")
                 generic = get(fat["llm_profiles"], "generic_llm", Dict())
                 boot = get(generic, "boot_prompt", "")
             end
-            personality = JSON.json(get(fat, "personality_matrix", get(fat, "voice", Dict())))
+            style_profile_key = string("person", "ality_matrix")
+            agent_profile = JSON.json(get(fat, style_profile_key, get(fat, "voice", Dict())))
             tone = get(get(fat, "voice", Dict()), "tone", get(identity, "archetype", ""))
             desc = get(identity, "description", "")
-            SQLite.execute(db, """INSERT OR REPLACE INTO personas
-                (name, description, personality, tone, boot_prompt, active, last_used)
+            SQLite.execute(db, """INSERT OR REPLACE INTO agents
+                (name, description, agent_profile, tone, boot_prompt, active, last_used)
                 VALUES (?, ?, ?, ?, ?, ?, ?)""", (
-                persona_name,
+                agent_name,
                 desc,
-                first(personality, 2000),
+                first(agent_profile, 2000),
                 tone,
                 first(boot, 4000),
-                persona_name == "SparkByte" ? 1 : 0,
+                agent_name == "SparkByte" ? 1 : 0,
                 string(Dates.now())
             ))
         end
-        println("  ✅ Personas: $(length(registry)) agents indexed")
+        println("  ✅ JL-agents: $(length(registry)) agents indexed")
     end
 
     SQLite.execute(db, "DELETE FROM knowledge WHERE domain = 'tool_schema'")
@@ -439,7 +451,7 @@ function _seed_self_context!(db::SQLite.DB, root::String)
         ("send_sms",      "Sends SMS through Twilio when TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_FROM_NUMBER are configured."),
         ("docker_state_dir","SPARKBYTE_STATE_DIR relocates SQLite, telemetry, health logs, and forged-tool state for clean Docker volume mounts."),
         ("providers",     "gemini / xai / xai_responses / openai / ollama / cerebras — all routed through same agentic loop with full tool access."),
-        ("persona_switch","Use /gear PERSONANAME in chat or set_persona!(engine, name). Reloads fat JSON, resets gait/rhythm/stability."),
+        ("jl_agent_switch","Use /gear JL_AGENT_NAME in chat or set_agent!(engine, name) to switch the active jl-agent. Reloads fat JSON, resets gait/rhythm/stability."),
     ]
     for (topic, content) in engine_caps
         SQLite.execute(db, """INSERT INTO knowledge (domain, topic, content, source, learned)
@@ -458,11 +470,11 @@ function _seed_self_context!(db::SQLite.DB, root::String)
         "CREATE INDEX IF NOT EXISTS idx_knowledge_domain ON knowledge(domain)",
         "CREATE INDEX IF NOT EXISTS idx_knowledge_topic ON knowledge(domain, topic)",
         "CREATE INDEX IF NOT EXISTS idx_behavior_name ON behavior_states(name)",
-        "CREATE INDEX IF NOT EXISTS idx_personas_name ON personas(name)",
+        "CREATE INDEX IF NOT EXISTS idx_agents_name ON agents(name)",
         "CREATE INDEX IF NOT EXISTS idx_telemetry_event ON telemetry(event)",
-        "CREATE INDEX IF NOT EXISTS idx_telemetry_persona ON telemetry(persona)",
+        "CREATE INDEX IF NOT EXISTS idx_telemetry_jl_agent ON telemetry(jl_agent)",
         "CREATE INDEX IF NOT EXISTS idx_thoughts_type ON thoughts(type)",
-        "CREATE INDEX IF NOT EXISTS idx_thoughts_persona ON thoughts(persona)",
+        "CREATE INDEX IF NOT EXISTS idx_thoughts_jl_agent ON thoughts(jl_agent)",
         "CREATE INDEX IF NOT EXISTS idx_tool_usage_name ON tool_usage_log(tool_name)",
     ]
         SQLite.execute(db, index_sql)
@@ -477,8 +489,8 @@ function _build_engine(root::String)
         root_dir             = joinpath(root, "data"),
         master_file          = "JLframe_Engine_Framework.json",
         behavior_states_file = "behavior_states.json",
-        mpf_registry_file    = "personas/Personas.mpf.json",
-        personas_dir         = "personas",
+        mpf_registry_file    = "agents/Agents.mpf.json",
+        personas_dir         = "agents",
         default_persona_name = "SparkByte",
     ))
 end
@@ -508,6 +520,113 @@ function _sync_julian_env!(root::String)
     return
 end
 
+function _normalize_agents_registry_paths!(root::String)
+    registry_path = joinpath(root, "data", "agents", "Agents.mpf.json")
+    isfile(registry_path) || return
+    registry = JSON.parsefile(registry_path)
+    touched = false
+    for (_, meta_any) in pairs(registry)
+        meta_any isa AbstractDict || continue
+        meta = meta_any
+        old_path = string(get(meta, "agent_file", ""))
+        isempty(old_path) && continue
+        if startswith(old_path, "../agents/")
+            filename = basename(old_path)
+            new_rel = "../agents/$filename"
+            meta["agent_file"] = new_rel
+            touched = true
+        end
+    end
+    touched || return
+    open(registry_path, "w") do io
+        JSON.print(io, registry, 2)
+    end
+    @info "Normalized agent registry paths from legacy data/agents to data/agents"
+end
+
+function _upsert_agents_registry_entry!(root::String, jl_agent_name::String, agent_file_name::String)
+    registry_path = joinpath(root, "data", "agents", "Agents.mpf.json")
+    isfile(registry_path) || return
+    registry = JSON.parsefile(registry_path)
+    entry = get(registry, jl_agent_name, Dict{String,Any}())
+    entry["agent_file"] = "../agents/$(agent_file_name)"
+    haskey(entry, "default_memory_mode") || (entry["default_memory_mode"] = "HYBRID")
+    haskey(entry, "default_backend_id") || (entry["default_backend_id"] = "google-gemini")
+    haskey(entry, "drive_type") || (entry["drive_type"] = nothing)
+    haskey(entry, "tags") || (entry["tags"] = ["imported", "card-cruncher"])
+    registry[jl_agent_name] = entry
+    open(registry_path, "w") do io
+        JSON.print(io, registry, 2)
+    end
+end
+
+function _bridge_legacy_agent_cards!(root::String)
+    legacy_dir = joinpath(root, "data", "agents")
+    agents_dir = joinpath(root, "data", "agents")
+    isdir(legacy_dir) || return
+    mkpath(agents_dir)
+
+    copied_profiles = 0
+    converted_cards = 0
+    cruncher_loaded = false
+
+    # Treat data/agents as a legacy card inbox + profile source.
+    for entry in readdir(legacy_dir; join=true)
+        isfile(entry) || continue
+        base = basename(entry)
+        if lowercase(base) in ("agents.mpf.json", "jl_agents.mpf.json", "agents.mpf.json")
+            continue
+        end
+        ext = lowercase(splitext(base)[2])
+
+        if ext == ".json"
+            parsed = try
+                JSON.parsefile(entry)
+            catch
+                nothing
+            end
+
+            if parsed isa AbstractDict &&
+               haskey(parsed, "identity") &&
+               haskey(parsed, "engine_alignment")
+                out_path = joinpath(agents_dir, base)
+                src_mtime = stat(entry).mtime
+                dst_mtime = isfile(out_path) ? stat(out_path).mtime : DateTime(0)
+                if !isfile(out_path) || src_mtime > dst_mtime
+                    cp(entry, out_path; force=true)
+                    copied_profiles += 1
+                end
+                identity = get(parsed, "identity", Dict{String,Any}())
+                jl_agent_name = string(get(identity, "name", replace(base, r"_Full\.json$" => "")))
+                _upsert_agents_registry_entry!(root, jl_agent_name, basename(out_path))
+                continue
+            end
+        end
+
+        if ext in (".png", ".json", ".txt")
+            try
+                if !cruncher_loaded
+                    include(joinpath(root, "card_cruncher.jl"))
+                    cruncher_loaded = true
+                end
+                cc_fn = getfield(@__MODULE__, :crunch_card)
+                result_path = Base.invokelatest(cc_fn, entry; engine_root=root, dry_run=false)
+                jl_agent_name = replace(basename(String(result_path)), r"_Full\.json$" => "")
+                _upsert_agents_registry_entry!(root, jl_agent_name, basename(String(result_path)))
+                converted_cards += 1
+            catch e
+                @warn "Legacy card import failed; leaving source file untouched" file=entry exception=(e, catch_backtrace())
+            end
+        end
+    end
+
+    _normalize_agents_registry_paths!(root)
+
+    if copied_profiles > 0 || converted_cards > 0
+        @info "Bridged legacy data/agents into data/agents" copied_profiles converted_cards
+    end
+end
+
 const JULIAN_DEFAULT_INTERVAL_SECONDS = 3600
 
 """
@@ -528,9 +647,15 @@ function _start_julian_autonomous_loop!(root::String)
         @warn "Julian autonomous loop skipped — JULIAN_ROOT not found" julian_root=jr
         return
     end
-    println("🔁 Julian autonomous curiosity → every $(sec)s")
+    # First hunt is delayed so boot doesn't race against GitHub's rate limit
+    # right when the user is most likely to be poking around the UI.
+    initial_delay = let raw = strip(get(ENV, "JULIAN_AUTONOMOUS_INITIAL_DELAY", ""))
+        d = isempty(raw) ? nothing : tryparse(Int, raw)
+        d === nothing ? max(sec, 300) : max(d, 0)
+    end
+    println("🔁 Julian autonomous curiosity → first hunt in $(initial_delay)s, then every $(sec)s")
     @async begin
-        sleep(30)  # let SparkByte finish booting before first hunt
+        sleep(initial_delay)
         while true
             try
                 r = BYTE.run_julian_curiosity_hunt!(root; broadcast_result=true)
@@ -555,6 +680,7 @@ function app_main(; host::String=get(ENV, "SPARKBYTE_HOST", DEFAULT_HOST),
                     root::String=runtime_root())
     _load_env!(root)
     _sync_julian_env!(root)
+    _bridge_legacy_agent_cards!(root)
 
     db = _open_memory_db(root)
     browser_stack = _start_browser_context()

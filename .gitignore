@@ -103,3 +103,9 @@ SparkByte_Live_Feed.md
 TRUTH.md
 sparkbyte_memory.db.bak-*
 data/budget_ledger.json
+
+# Runtime boot logs (local only)
+live_boot.txt
+boot_stdout.txt
+boot_stderr.txt
+*.bak

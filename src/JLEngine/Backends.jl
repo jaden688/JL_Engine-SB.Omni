@@ -209,9 +209,10 @@ function _message_content(messages)
 end
 
 function generate(backend::NoopBackend, messages; options=Dict{String, Any}(), timeout=nothing)
-    user_message = _message_content(messages)
-    reply = isempty(user_message) ? "[NOOP BACKEND] This is a stub response. No real model was called." : user_message
-    return reply, Dict{String, Any}("provider" => "noop", "status" => "ok", "model" => "noop-stub", "options" => options)
+    # Never echo the prompt back — the autopilot/UI would render that as
+    # SparkByte's "thought" and show the user her own scaffolding.
+    reply = "[no backend reachable]"
+    return reply, Dict{String, Any}("provider" => "noop", "status" => "no_backend", "model" => "noop-stub", "options" => options)
 end
 
 function generate(backend::OllamaBackend, messages; options=Dict{String, Any}(), timeout=30)
@@ -335,17 +336,27 @@ function generate(backend::GoogleGeminiBackend, messages; options=Dict{String, A
         response = HTTP.post(endpoint, ["Content-Type" => "application/json", "x-goog-api-key" => api_key], JSON3.write(payload); readtimeout=(timeout === nothing ? get(backend.config, "timeout", 60) : timeout))
         data = _materialize_json(JSON3.read(String(response.body)))
         text = ""
+        thoughts = ""
         if haskey(data, "candidates") && !isempty(data["candidates"])
             cand = data["candidates"][1]
             if haskey(cand, "content") && haskey(cand["content"], "parts")
                 for part in cand["content"]["parts"]
                     if haskey(part, "text")
-                        text *= part["text"]
+                        # Gemini reasoning models tag CoT parts with thought:true.
+                        # Split them out so the UI can surface the chain visibly
+                        # instead of swallowing it into the final answer.
+                        if get(part, "thought", false) === true
+                            thoughts *= part["text"]
+                        else
+                            text *= part["text"]
+                        end
                     end
                 end
             end
         end
-        return text, Dict{String, Any}("model" => model, "backend" => "google_gemini", "raw" => data)
+        meta = Dict{String, Any}("model" => model, "backend" => "google_gemini", "raw" => data)
+        isempty(thoughts) || (meta["thoughts"] = thoughts)
+        return text, meta
     catch exc
         return "[ERROR: Could not connect to Google Gemini.]", Dict{String, Any}("error" => sprint(showerror, exc))
     end

@@ -197,3 +197,15 @@ end
 # -- tool_set_backend | 2026-04-17 23:56:26 | PASS --
 # args:   {}
 # result: {"message":"Missing backend_id","status":"error"}
+# -- tool_google_search | 2026-04-23 15:03:26 | FAIL --
+# args:   {}
+# result: {"error":"KeyError(\"query\")"}
+# -- tool_google_search | 2026-04-23 15:03:31 | FAIL --
+# args:   {}
+# result: {"error":"KeyError(\"query\")"}
+# -- tool_google_search | 2026-04-23 15:03:36 | FAIL --
+# args:   {}
+# result: {"error":"KeyError(\"query\")"}
+# -- tool_google_search | 2026-04-23 15:05:34 | FAIL --
+# args:   {}
+# result: {"error":"KeyError(\"query\")"}

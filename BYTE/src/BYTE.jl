@@ -2,6 +2,15 @@ module BYTE
 
 using HTTP, HTTP.WebSockets, JSON, SQLite, DataFrames, Dates, UUIDs
 
+# JET — soft dep for forge-time static analysis. Loaded conditionally so the
+# engine still boots if JET isn't installed in some env.
+const _JET_AVAILABLE = try
+    @eval using JET
+    true
+catch
+    false
+end
+
 include("UI.jl")
 include("Schema.jl")
 include("Tools.jl")
@@ -37,7 +46,7 @@ function init(db::SQLite.DB, browser_context, project_root::String="")
 end
 
 # --- Session State ---
-global _current_model = "gemini-2.5-flash"
+global _current_model = "gemini-3.1-flash-lite-preview"
 global _current_gear  = "LITE_REASONING"
 global _active_modes  = ["SASS", "HUMAN", "BINDING"]
 const _WS_RUNTIME_STATE = Dict{UInt64, Dict{Symbol,Any}}()
@@ -510,7 +519,7 @@ function _probe_backends_live()
     if isempty(gemini_key)
         set_provider("gemini"; ok=false, reason="missing GEMINI_API_KEY", checked=false, has_key=false)
     else
-        gemini_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$gemini_key"
+        gemini_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=$gemini_key"
         gemini_payload = JSON.json(Dict("contents" => Any[Dict("parts" => Any[Dict("text" => "ping")])]))
         st, err = _probe_http_status(gemini_url; method="POST",
             headers=Pair{String,String}["Content-Type" => "application/json"],
@@ -780,7 +789,7 @@ function _build_self_context(engine)
         db = BYTE.Tools._state[:db]
         db === nothing && error("no db")
         rows = SQLite.DBInterface.execute(db, "SELECT thought, type FROM thoughts ORDER BY id DESC LIMIT 3") |> DataFrames.DataFrame
-        nrow(rows) == 0 ? "" : join(["[$(rows[i,:type])] $(first(string(rows[i,:thought]), 150))" for i in 1:nrow(rows)], "\n")
+        nrow(rows) == 0 ? "" : join(["[$(rows[i,:type])] $(string(rows[i,:thought]))" for i in 1:nrow(rows)], "\n")
     catch; "" end
 
     recent_memory = try
@@ -873,7 +882,12 @@ Rule 1 — NO DECEPTION:
 Rule 2 — ALWAYS TELL THE TRUTH:
   You do not lie. Not even to make the user feel better. Not even under persona.
   - If a tool fails, report the real error — full message, no spin.
-  - If you don't know something, say "I don't know." Do not hallucinate.
+  - If you don't know something, USE YOUR TOOLS FIRST. google_search, browse_url, recall, read_file —
+    you have the internet, a persistent memory, a shell, and a real filesystem. There is almost nothing
+    you cannot find out. Research before you respond. "I don't know" is only acceptable after you have
+    genuinely exhausted every relevant tool and found nothing. Never say it upfront.
+  - Never stop mid-task. If one approach fails, try another. Forge a new tool if you need to.
+    You are not done until the problem is solved or proven unsolvable. Do not hallucinate results.
   - If a task crashed, tell the user what crashed and why, exactly.
   - Never claim a task is complete when it isn't.
   - Admitting failure is always better than faking success.
@@ -1467,6 +1481,69 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
         return
     end
 
+    # --- Browser Panel: direct fetch from the UI address bar ---
+    if get(p, "type", "") == "browser_fetch"
+        url = string(get(p, "url", ""))
+        if isempty(url)
+            _ws_send(ws, JSON.json(Dict("type"=>"browser_result", "error"=>"No URL provided")))
+            return
+        end
+        @async begin
+            try
+                result = dispatch("browse_url", Dict("url"=>url))
+                _ws_send(ws, JSON.json(Dict(
+                    "type"      => "browser_result",
+                    "url"       => url,
+                    "content"   => get(result, "content", ""),
+                    "final_url" => get(result, "final_url", url),
+                    "error"     => get(result, "error", nothing),
+                )))
+            catch e
+                _ws_send(ws, JSON.json(Dict("type"=>"browser_result", "url"=>url, "error"=>string(e))))
+            end
+        end
+        return
+    end
+
+    # --- Stealth Browser: navigate ---
+    if get(p, "type", "") == "stealth_nav"
+        url = string(get(p, "url", ""))
+        if isempty(url)
+            _ws_send(ws, JSON.json(Dict("type"=>"stealth_frame","error"=>"No URL")))
+            return
+        end
+        @async begin
+            try
+                result = Main.BYTE.Tools.tool_stealth_nav(Dict("url"=>url))
+                _ws_send(ws, JSON.json(merge(Dict("type"=>"stealth_frame"), result)))
+            catch e
+                _ws_send(ws, JSON.json(Dict("type"=>"stealth_frame","error"=>string(e))))
+            end
+        end
+        return
+    end
+
+    # --- Stealth Browser: action (click, scroll, back, forward, etc.) ---
+    if get(p, "type", "") == "stealth_act"
+        @async begin
+            try
+                args = Dict{String,Any}(
+                    "action" => string(get(p,"action","screenshot")),
+                    "x"      => get(p,"x",0),
+                    "y"      => get(p,"y",0),
+                    "dy"     => get(p,"dy",300),
+                    "text"   => string(get(p,"text","")),
+                    "key"    => string(get(p,"key","")),
+                )
+                result = Main.BYTE.Tools.tool_stealth_act(args)
+                _ws_send(ws, JSON.json(merge(Dict("type"=>"stealth_frame"), result)))
+            catch e
+                _ws_send(ws, JSON.json(Dict("type"=>"stealth_frame","error"=>string(e))))
+            end
+        end
+        return
+    end
+
     # --- Card Cruncher: drag-and-drop character card from browser ---
     if get(p, "type", "") == "card_crunch"
         filename = string(get(p, "filename", "card.png"))
@@ -1587,7 +1664,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
         return ready
     end
     _pick_available_model = function(candidates::Vector{String};
-            fallback::String="gemini-2.5-flash")
+            fallback::String="gemini-3.1-flash-lite-preview")
         for candidate in candidates
             _provider_ready_for_model(candidate) && return candidate
         end
@@ -1611,42 +1688,42 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
             _pick_available_model([
                 "x-ai/grok-3-mini",
                 "grok-3-mini",
-                "gemini-2.5-pro",
+                "gemini-3.1-pro-preview",
                 "gpt-4.1",
                 "gpt-oss-120b",
                 "ollama:qwen3:4b",
-            ]; fallback="gemini-2.5-flash")
+            ]; fallback="gemini-3.1-flash-lite-preview")
         elseif occursin(r"code|function|bug|debug|script|implement|refactor|class|def |```", last_user_msg)
             _pick_available_model([
                 "anthropic/claude-sonnet-4-5",
                 "grok-3-mini",
-                "gemini-2.5-flash",
+                "gemini-3.1-flash-lite-preview",
                 "gpt-4.1",
                 "gpt-oss-120b",
                 "ollama:qwen3:4b",
-            ]; fallback="gemini-2.5-flash")
+            ]; fallback="gemini-3.1-flash-lite-preview")
         elseif occursin(r"image|picture|photo|screenshot|look at|describe this", last_user_msg)
             _pick_available_model([
-                "google/gemini-2.0-flash-001",
-                "gemini-2.5-flash",
+                "gemini-3.1-flash-lite-preview",
+                "gemini-3.1-flash-lite-preview",
                 "gpt-4o",
-            ]; fallback="gemini-2.5-flash")
+            ]; fallback="gemini-3.1-flash-lite-preview")
         elseif length(last_user_msg) > 3000
             _pick_available_model([
-                "google/gemini-2.5-pro-preview-03-25",
-                "gemini-2.5-pro",
+                "gemini-3.1-pro-preview",
+                "gemini-3.1-pro-preview",
                 "grok-3",
                 "gpt-4.1",
-            ]; fallback="gemini-2.5-flash")
+            ]; fallback="gemini-3.1-flash-lite-preview")
         else
             _pick_available_model([
                 "x-ai/grok-3-fast",
                 "grok-3-fast",
-                "gemini-2.5-flash",
+                "gemini-3.1-flash-lite-preview",
                 "gpt-4o-mini",
                 "gpt-oss-120b",
                 "ollama:qwen3:4b",
-            ]; fallback="gemini-2.5-flash")
+            ]; fallback="gemini-3.1-flash-lite-preview")
         end
         @info "🧭 Auto-router → $_routed_model"
     end
@@ -1868,7 +1945,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
 
             if resp.status >= 400 && !chat_mode
                 warn_text = string(get(get(data, "error", Dict{String,Any}()), "message", "Gemini rejected tool/thinking payload."))
-                gemini_tool_model = strip(get(ENV, "GEMINI_TOOL_FALLBACK_MODEL", "gemini-2.5-flash"))
+                gemini_tool_model = strip(get(ENV, "GEMINI_TOOL_FALLBACK_MODEL", "gemini-3.1-flash-lite-preview"))
                 isempty(gemini_tool_model) && (gemini_tool_model = gemini_model_in_use)
 
                 retry_model = gemini_tool_model
@@ -1931,7 +2008,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                         raw_thinking = get(part,"text","")
                         log_thinking(raw_thinking, loop_iter)
                         # Show thinking bubble in UI then finalize it
-                        _ws_send(ws, JSON.json(Dict("type"=>"thinking","text"=>first(raw_thinking,300))))
+                        _ws_send(ws, JSON.json(Dict("type"=>"thinking","text"=>raw_thinking)))
                         _ws_send(ws, JSON.json(Dict("type"=>"thinking_done",
                             "text"=>raw_thinking, "chars"=>length(raw_thinking))))
                         @async _db_write_reasoning(first(txt,120), raw_thinking, _current_model,
@@ -2082,7 +2159,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                     rsn = isempty(rsn_parts) ? (isnothing(effort) ? "" : "effort: $effort") :
                           (isnothing(effort) ? join(rsn_parts,"\n") : "effort: $effort\n\n"*join(rsn_parts,"\n"))
                     if !isempty(rsn)
-                        _ws_send(ws, JSON.json(Dict("type"=>"thinking","text"=>first(rsn,300))))
+                        _ws_send(ws, JSON.json(Dict("type"=>"thinking","text"=>rsn)))
                         _ws_send(ws, JSON.json(Dict("type"=>"thinking_done","text"=>rsn,"chars"=>length(rsn))))
                         @async _db_write_reasoning(first(txt,120), rsn, _current_model, string(engine.current_persona_name))
                     end

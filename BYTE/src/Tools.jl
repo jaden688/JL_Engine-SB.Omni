@@ -7,6 +7,7 @@ using PythonCall, SQLite, DataFrames, Dates, JSON, HTTP, Base64
 const _state = Dict{Symbol, Any}(
     :db => nothing,
     :browser_context => nothing,
+    :stealth_page => nothing,
 )
 
 # Mutable live registry for dynamically forged tools
@@ -742,24 +743,59 @@ function tool_forge_new_tool(args)
                 "Do not fake hardware capabilities. Return a real error if the device isn't available.")
         end
 
+        # 0a. Pre-eval JETLS-style validation — parse + lower every expression
+        # before any side effects. Catches syntax errors, scope violations,
+        # malformed expressions. Cheap and doesn't require JET.jl as a hard dep.
+        # JET-proper runs post-eval (step 2.5) when the package is available.
+        parsed = try
+            Meta.parseall(code)
+        catch e
+            return Dict("error" => "FORGE REJECTED — parse failure: $(e)", "stage" => "parse")
+        end
+        for expr in parsed.args
+            expr isa LineNumberNode && continue
+            (expr isa Expr && expr.head in (:using, :import)) && continue
+            lowered = Meta.lower(@__MODULE__, expr)
+            if lowered isa Expr && lowered.head === :error
+                return Dict("error" => "FORGE REJECTED — lower failure: $(lowered.args[1])", "stage" => "lower")
+            end
+        end
+
         # 1. Eval code into BYTE module — live immediately
         # Iterate per-expression (same as _load_dynamic_tools!) so that top-level
         # `using` statements (packages already in scope) don't trigger world-age
         # recursion in Julia 1.12 when eval'd as a single :toplevel block.
-        let parsed = Meta.parseall(code)
-            for expr in parsed.args
-                expr isa LineNumberNode && continue
-                # Skip bare `using X` / `import X` — all allowed packages are
-                # already loaded in the BYTE module scope.
-                (expr isa Expr && expr.head in (:using, :import)) && continue
-                Core.eval(@__MODULE__, expr)
-            end
+        for expr in parsed.args
+            expr isa LineNumberNode && continue
+            (expr isa Expr && expr.head in (:using, :import)) && continue
+            Core.eval(@__MODULE__, expr)
         end
 
         # 2. Verify expected function exists
         fn_sym = Symbol("tool_$name")
         if !isdefined(@__MODULE__, fn_sym)
             return Dict("error" => "Eval succeeded but `tool_$name(args)` not found. Code must define exactly that function name.")
+        end
+
+        # 2.5. JET deep-check (soft dep). If JET.jl is loaded, run abstract
+        # interpretation against the new function for a Dict{String,Any} arg.
+        # Reports type errors, undef vars, dispatch failures the parser misses.
+        # Skipped silently if JET isn't available — never fails the forge for
+        # warnings, only logs and stamps the schema with a quality flag.
+        jet_report = ""
+        try
+            jet_mod = isdefined(@__MODULE__, :JET) ? getfield(@__MODULE__, :JET) :
+                      (Base.find_package("JET") !== nothing ? Base.require(Base.PkgId(Base.UUID("c3a54625-cd67-489e-a8e7-0a5a0ff4e31b"), "JET")) : nothing)
+            if jet_mod !== nothing
+                fn = getfield(@__MODULE__, fn_sym)
+                rep = Base.invokelatest(jet_mod.report_call, fn, (Dict{String,Any},))
+                jet_report = string(rep)
+                if occursin(r"\d+ possible error"i, jet_report)
+                    @warn "Forged tool `$name` has JET-detected issues" report=first(jet_report, 800)
+                end
+            end
+        catch e
+            @debug "JET check skipped" exception=e
         end
 
         # 3. Register in TOOL_MAP with invokelatest wrapper for Julia 1.12 world age compliance
@@ -945,6 +981,30 @@ function tool_github_pillage(args)
 end
 
 # --- Web Eyes ---
+# Primary web reader: Jina Reader returns clean LLM-ready markdown for any URL
+# without spinning up a browser. Use this first; fall back to browse_url /
+# playwright_interact only for JS-heavy SPAs, auth-walled pages, or interaction.
+function tool_jina_fetch(args)
+    url = string(get(args, "url", ""))
+    isempty(url) && return Dict("error" => "url required")
+    max_chars = Int(get(args, "max_chars", 8000))
+    target = "https://r.jina.ai/" * url
+    headers = ["Accept" => "text/plain", "User-Agent" => "SparkByte/1.0"]
+    api_key = get(ENV, "JINA_API_KEY", "")
+    isempty(api_key) || push!(headers, "Authorization" => "Bearer " * api_key)
+    try
+        resp = HTTP.get(target, headers; readtimeout=30, retry=false, status_exception=false)
+        body = String(resp.body)
+        if resp.status >= 400
+            return Dict("error" => "Jina fetch failed (HTTP $(resp.status))", "hint" => "Try browse_url or playwright_interact for JS/auth pages.", "body" => first(body, 500))
+        end
+        @async try; _db_write_web_cache(url, body); catch e; @warn "Web cache write failed" exception=(e, catch_backtrace()); end
+        Dict("content" => first(body, max_chars), "source" => "jina_reader", "url" => url, "truncated" => length(body) > max_chars)
+    catch e
+        Dict("error" => string(e), "hint" => "Network error — try browse_url as fallback.")
+    end
+end
+
 function tool_browse_url(args)
     ctx = _state[:browser_context]
     ctx === nothing && return Dict("error" => "Browser not initialized.")
@@ -980,6 +1040,101 @@ function tool_browse_url(args)
         bot_wall && (out["warning"] = "Target served a captcha / bot-detection page. Content may be useless.")
         out
     catch e Dict("error" => string(e)) end
+end
+
+# ── Stealth Browser (persistent page, screenshot-based) ──────────────────────
+# Maintains a single long-lived Playwright page so cookies/session survive
+# across navigations in the stealth browser panel.
+
+const _STEALTH_VIEWPORT_W = 1280
+const _STEALTH_VIEWPORT_H = 800
+const _STEALTH_SS_PATH    = Ref{String}("")
+
+function _stealth_ss_path()
+    if isempty(_STEALTH_SS_PATH[])
+        _STEALTH_SS_PATH[] = joinpath(tempdir(), "sparkbyte_stealth.png")
+    end
+    _STEALTH_SS_PATH[]
+end
+
+function _get_stealth_page()
+    ctx = _state[:browser_context]
+    ctx === nothing && error("Browser context not initialized.")
+    pg = _state[:stealth_page]
+    # Recreate if page is closed/null
+    if pg === nothing || pyconvert(Bool, pg.is_closed())
+        pg = ctx.new_page()
+        pg.set_viewport_size(Dict("width"=>_STEALTH_VIEWPORT_W, "height"=>_STEALTH_VIEWPORT_H))
+        _state[:stealth_page] = pg
+    end
+    pg
+end
+
+function _stealth_snapshot()
+    pg = _get_stealth_page()
+    ss = _stealth_ss_path()
+    try
+        pg.screenshot(path=ss, type="png")
+        b64 = base64encode(read(ss))
+        url = pyconvert(String, pg.url)
+        title = try; pyconvert(String, pg.title()); catch; ""; end
+        return Dict{String,Any}("img_b64"=>b64, "url"=>url, "title"=>title,
+            "w"=>_STEALTH_VIEWPORT_W, "h"=>_STEALTH_VIEWPORT_H)
+    catch e
+        return Dict{String,Any}("error"=>string(e))
+    end
+end
+
+function tool_stealth_nav(args)
+    ctx = _state[:browser_context]
+    ctx === nothing && return Dict("error" => "Browser not initialized.")
+    url = string(get(args, "url", ""))
+    isempty(url) && return Dict("error" => "url required")
+    try
+        pg = _get_stealth_page()
+        try; pg.goto(url, wait_until="domcontentloaded", timeout=22000); catch; end
+        try; pg.wait_for_load_state("networkidle", timeout=5000); catch; end
+        _stealth_snapshot()
+    catch e; Dict("error"=>string(e)) end
+end
+
+function tool_stealth_act(args)
+    ctx = _state[:browser_context]
+    ctx === nothing && return Dict("error" => "Browser not initialized.")
+    action = string(get(args, "action", "screenshot"))
+    try
+        pg = _get_stealth_page()
+        if action == "click_xy"
+            x = Float64(get(args, "x", 0))
+            y = Float64(get(args, "y", 0))
+            pg.mouse.click(x, y)
+            try; pg.wait_for_load_state("networkidle", timeout=4000); catch; end
+        elseif action == "back"
+            pg.go_back(wait_until="domcontentloaded", timeout=10000)
+            try; pg.wait_for_load_state("networkidle", timeout=4000); catch; end
+        elseif action == "forward"
+            pg.go_forward(wait_until="domcontentloaded", timeout=10000)
+            try; pg.wait_for_load_state("networkidle", timeout=4000); catch; end
+        elseif action == "scroll"
+            dy = Float64(get(args, "dy", 300))
+            pg.mouse.wheel(0, dy)
+            sleep(0.3)
+        elseif action == "type_at"
+            x = Float64(get(args, "x", 0))
+            y = Float64(get(args, "y", 0))
+            text = string(get(args, "text", ""))
+            pg.mouse.click(x, y)
+            pg.keyboard.type(text)
+        elseif action == "key"
+            key = string(get(args, "key", ""))
+            isempty(key) || pg.keyboard.press(key)
+            try; pg.wait_for_load_state("networkidle", timeout=4000); catch; end
+        elseif action == "refresh"
+            pg.reload(wait_until="domcontentloaded", timeout=20000)
+            try; pg.wait_for_load_state("networkidle", timeout=4000); catch; end
+        end
+        _stealth_snapshot()
+    catch e; Dict("error"=>string(e)) end
 end
 
 # --- Memory ---
@@ -1134,7 +1289,7 @@ function tool_metamorph(args)
     if action == "inspect"
         static_tools   = ["read_file","write_file","list_files","run_command",
                           "get_os_info","bluetooth_devices","send_sms",
-                          "reddit_submit","execute_code","forge_new_tool","browse_url",
+                          "reddit_submit","execute_code","forge_new_tool","jina_fetch","browse_url",
                           "github_pillage","remember","recall","metamorph"]
         live_tools     = sort(collect(keys(TOOL_MAP)))
         dynamic_names  = [get(d,"name","") for d in DYNAMIC_SCHEMA]
@@ -1250,6 +1405,7 @@ function tool_metamorph(args)
             "send_sms"          => tool_send_sms,
             "execute_code"      => tool_execute_code,
             "forge_new_tool"    => tool_forge_new_tool,
+            "jina_fetch"        => tool_jina_fetch,
             "browse_url"        => tool_browse_url,
             "github_pillage"    => tool_github_pillage,
             "remember"          => tool_remember,
@@ -1766,6 +1922,7 @@ const TOOL_MAP = Dict{String, Function}(
     "reddit_submit"  => tool_reddit_submit,
     "execute_code"   => tool_execute_code,
     "forge_new_tool" => tool_forge_new_tool,
+    "jina_fetch"              => tool_jina_fetch,
     "browse_url"              => tool_browse_url,
     "playwright_interact"     => tool_playwright_interact,
     "discord_webhook"         => tool_discord_webhook,
