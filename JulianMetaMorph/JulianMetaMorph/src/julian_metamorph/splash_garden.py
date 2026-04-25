@@ -693,7 +693,7 @@ def _case_library() -> list[SplashBenchCase]:
         SplashBenchCase(
             slug="spectral-echo",
             title="Spectral Echo",
-            description="Separates channel personalities so the field reveals color-phase drift.",
+            description="Separates channel agentlities so the field reveals color-phase drift.",
             energy=1.12,
             delay_gain=1.08,
             structure_gain=1.0,

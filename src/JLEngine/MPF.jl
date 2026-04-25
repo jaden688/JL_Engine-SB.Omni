@@ -4,11 +4,11 @@ function load_mpf_registry(registry_path::AbstractString)
 
     for (display_name, entry) in raw_registry
         entry isa AbstractDict || continue
-        persona_file = get(entry, "persona_file", nothing)
-        persona_file isa AbstractString || continue
+        agent_file = get(entry, "agent_file", nothing)
+        agent_file isa AbstractString || continue
         tags = [String(tag) for tag in get(entry, "tags", Any[]) if tag isa AbstractString]
         profiles[String(display_name)] = MPFProfile(
-            persona_file=String(persona_file),
+            agent_file=String(agent_file),
             default_memory_mode=get(entry, "default_memory_mode", nothing),
             default_backend_id=get(entry, "default_backend_id", nothing),
             drive_type=get(entry, "drive_type", nothing),
@@ -19,17 +19,17 @@ function load_mpf_registry(registry_path::AbstractString)
     return profiles
 end
 
-function load_persona_file(path::AbstractString)
+function load_agent_file(path::AbstractString)
     data = load_json_safely(path)
     isempty(data) && return data
 
-    # If persona has an active_loadout, resolve modular profiles
+    # If agent has an active_loadout, resolve modular profiles
     loadout_id = get(data, "active_loadout", nothing)
     loadout_id isa AbstractString && !isempty(loadout_id) || return data
 
-    # Find the modular_fat_agent_pack directory relative to the persona file
-    persona_dir = dirname(path)
-    pack_dir = joinpath(dirname(persona_dir), "modular_fat_agent_pack")
+    # Find the modular_fat_agent_pack directory relative to the JL agent file
+    agent_dir = dirname(path)
+    pack_dir = joinpath(dirname(agent_dir), "modular_fat_agent_pack")
     !isdir(pack_dir) && return data
 
     # Load the loadout definition
@@ -68,7 +68,7 @@ function load_persona_file(path::AbstractString)
         !isempty(helpers) && (resolved["helpers"] = helpers)
     end
 
-    # Merge into persona data
+    # Merge into agent data
     data["loadout"] = loadout
     data["loadout_id"] = loadout_id
     data["resolved_profiles"] = resolved
@@ -95,8 +95,8 @@ function load_persona_file(path::AbstractString)
     return data
 end
 
-function get_llm_boot_prompt(persona_config::AbstractDict, target::AbstractString="generic_llm")
-    profiles = get(persona_config, "llm_profiles", nothing)
+function get_llm_boot_prompt(agent_config::AbstractDict, target::AbstractString="generic_llm")
+    profiles = get(agent_config, "llm_profiles", nothing)
     base_prompt = ""
 
     if profiles isa AbstractDict
@@ -115,12 +115,12 @@ function get_llm_boot_prompt(persona_config::AbstractDict, target::AbstractStrin
         end
     end
     
-    # ── Inject Modular Persona Expressiveness (FULL FAT) ──────────────────────
+    # ── Inject Modular Agent Expressiveness (FULL FAT) ──────────────────────
 
     extra_context = String[]
 
     # 1. Identity — who SparkByte is
-    identity = get(persona_config, "identity", Dict())
+    identity = get(agent_config, "identity", Dict())
     if identity isa AbstractDict && !isempty(identity)
         block = "== IDENTITY ==\n"
         for key in ["name", "role", "archetype", "description"]
@@ -133,7 +133,7 @@ function get_llm_boot_prompt(persona_config::AbstractDict, target::AbstractStrin
     end
 
     # 2. Behavior & Directives (including edge_behavior)
-    behavior = get(persona_config, "behavior_config", get(persona_config, "behavior", Dict()))
+    behavior = get(agent_config, "behavior_config", get(agent_config, "behavior", Dict()))
     if behavior isa AbstractDict && !isempty(behavior)
         block = "== BEHAVIOR & DIRECTIVES ==\n"
         for key in ["core_directives", "pillars", "avoidances"]
@@ -156,7 +156,7 @@ function get_llm_boot_prompt(persona_config::AbstractDict, target::AbstractStrin
     end
 
     # 3. Cognitive modes — SASS_LAYER, HUMANIZED_EXPLANATION, etc.
-    modes = get(persona_config, "cognitive_modes", Dict())
+    modes = get(agent_config, "cognitive_modes", Dict())
     if modes isa AbstractDict && !isempty(modes)
         block = "== COGNITIVE MODES (ACTIVE) ==\n"
         active = get(modes, "active_modes", [])
@@ -171,9 +171,9 @@ function get_llm_boot_prompt(persona_config::AbstractDict, target::AbstractStrin
     end
 
     # 4. Gait, Rhythm, Tone — the voice layer
-    tone = get(persona_config, "tone_config", Dict())
-    gait = get(persona_config, "gait", Dict())
-    rhythm = get(persona_config, "rhythm", Dict())
+    tone = get(agent_config, "tone_config", Dict())
+    gait = get(agent_config, "gait", Dict())
+    rhythm = get(agent_config, "rhythm", Dict())
 
     if !isempty(tone) || !isempty(gait) || !isempty(rhythm)
         block = "== EXPRESSIVENESS & VOICE ==\n"
@@ -198,7 +198,7 @@ function get_llm_boot_prompt(persona_config::AbstractDict, target::AbstractStrin
     end
 
     # 5. Emotion palette — the ACTUAL register/style samples
-    palette = get(persona_config, "emotion_palette", [])
+    palette = get(agent_config, "emotion_palette", [])
     if palette isa AbstractVector && !isempty(palette)
         block = "== EMOTION PALETTE (your default register lives here) ==\n"
         for facet in palette
@@ -212,7 +212,7 @@ function get_llm_boot_prompt(persona_config::AbstractDict, target::AbstractStrin
     end
 
     # 6. Emotion wheel baseline — resting state
-    wheel = get(persona_config, "emotion_wheel", Dict())
+    wheel = get(agent_config, "emotion_wheel", Dict())
     if wheel isa AbstractDict && !isempty(wheel)
         baseline_root = String(get(wheel, "baseline_root", ""))
         baseline_family = String(get(wheel, "baseline_family", ""))
@@ -225,7 +225,7 @@ function get_llm_boot_prompt(persona_config::AbstractDict, target::AbstractStrin
     end
 
     # 7. Abilities — execution traits (initiative, precision, clarity, etc.)
-    abilities = get(persona_config, "abilities", Dict())
+    abilities = get(agent_config, "abilities", Dict())
     if abilities isa AbstractDict
         traits = get(abilities, "execution_traits", Dict())
         if traits isa AbstractDict && !isempty(traits)

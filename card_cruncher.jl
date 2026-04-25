@@ -1,10 +1,10 @@
 #!/usr/bin/env julia
-# card_cruncher.jl — SillyTavern/CharacterTavern card → JLEngine persona converter
+# card_cruncher.jl — SillyTavern/CharacterTavern card → JLEngine agent converter
 #
 # Usage (CLI):
 #   julia card_cruncher.jl path/to/card.png
 #   julia card_cruncher.jl path/to/card.json
-#   julia card_cruncher.jl path/to/card.json --out data/personas/MyChar_Full.json
+#   julia card_cruncher.jl path/to/card.json --out data/agents/MyChar_Full.json
 #
 # Or call crunch_card(path) from another script / BYTE tool.
 
@@ -75,13 +75,13 @@ function parse_card(path::String)::Dict{String,Any}
 end
 
 # ─────────────────────────────────────────────
-#  Personality → directives parser
+#  Agentlity → directives parser
 # ─────────────────────────────────────────────
 
-function parse_directives(personality::String)::Vector{String}
-    isempty(strip(personality)) && return String[]
+function parse_directives(agentlity::String)::Vector{String}
+    isempty(strip(agentlity)) && return String[]
     # Split on newlines, bullet markers, or sentence boundaries
-    lines = split(personality, r"[\n\r]+|(?<=[.!?])\s+(?=[A-Z])")
+    lines = split(agentlity, r"[\n\r]+|(?<=[.!?])\s+(?=[A-Z])")
     directives = String[]
     for line in lines
         clean = strip(string(line))
@@ -98,7 +98,7 @@ function parse_directives(personality::String)::Vector{String}
 end
 
 # ─────────────────────────────────────────────
-#  Personality keyword → archetype inference
+#  Agentlity keyword → archetype inference
 # ─────────────────────────────────────────────
 
 const ARCHETYPE_KEYWORDS = [
@@ -116,8 +116,8 @@ const ARCHETYPE_KEYWORDS = [
     ("caregiver|nurse|healer|support",  "caregiver-warm",   "caregiver", ["caring", "warm", "supportive", "gentle"]),
 ]
 
-function infer_archetype(description::String, personality::String, name::String)
-    combined = lowercase(description * " " * personality * " " * name)
+function infer_archetype(description::String, agentlity::String, name::String)
+    combined = lowercase(description * " " * agentlity * " " * name)
     for (keywords, archetype_id, archetype_label, tags) in ARCHETYPE_KEYWORDS
         if occursin(Regex(keywords), combined)
             return archetype_id, archetype_label, tags
@@ -130,11 +130,11 @@ end
 #  Emotion wheel template per archetype
 # ─────────────────────────────────────────────
 
-function build_emotion_wheel(archetype_label::String, personality::String)
+function build_emotion_wheel(archetype_label::String, agentlity::String)
     # Minimal but valid emotion wheel — 2 roots, sane defaults
-    combined = lowercase(personality)
+    combined = lowercase(agentlity)
 
-    # Detect dominant emotion from personality text
+    # Detect dominant emotion from agentlity text
     primary_id, primary_label, primary_style, primary_weight =
         if occursin(r"warm|kind|gentle|sweet|soft", combined)
             "reassuring_bond", "reassuring", "warm, open, steady", 0.72
@@ -214,14 +214,14 @@ end
 #  Build boot prompt
 # ─────────────────────────────────────────────
 
-function build_boot_prompt(name::String, description::String, personality::String,
+function build_boot_prompt(name::String, description::String, agentlity::String,
                             scenario::String, first_mes::String, system_prompt::String)::String
     if !isempty(strip(system_prompt))
         # V2 card has its own system prompt — use it as the foundation, annotate for JLEngine
         prompt = strip(system_prompt)
         prompt = replace(prompt, "{{char}}" => name)
         prompt = replace(prompt, "{{user}}" => "User")
-        return prompt * "\n\n[JLEngine: Character agent loaded from SillyTavern card. Maintain persona consistency across all turns.]"
+        return prompt * "\n\n[JLEngine: Character agent loaded from SillyTavern card. Maintain agent consistency across all turns.]"
     end
 
     # Build from parts
@@ -234,8 +234,8 @@ function build_boot_prompt(name::String, description::String, personality::Strin
         push!(parts, "\nCHARACTER:\n$desc")
     end
 
-    if !isempty(strip(personality))
-        pers = strip(personality)[1:min(end, 600)]
+    if !isempty(strip(agentlity))
+        pers = strip(agentlity)[1:min(end, 600)]
         push!(parts, "\nPERSONALITY:\n$pers")
     end
 
@@ -248,7 +248,7 @@ function build_boot_prompt(name::String, description::String, personality::Strin
         push!(parts, "\nOPENING STYLE:\nYour first message sets the tone — reference this example:\n\"$(strip(first_mes)[1:min(end,300)])\"")
     end
 
-    push!(parts, "\n[JLEngine: Maintain character at all times. Stay in persona under pressure. Do not break into generic assistant mode.]")
+    push!(parts, "\n[JLEngine: Maintain character at all times. Stay in agent under pressure. Do not break into generic assistant mode.]")
 
     return join(parts, "\n")
 end
@@ -257,11 +257,11 @@ end
 #  Main converter
 # ─────────────────────────────────────────────
 
-function card_to_persona(card::Dict{String,Any}, source_path::String)::Dict{String,Any}
+function card_to_agent(card::Dict{String,Any}, source_path::String)::Dict{String,Any}
     # Extract fields (handle missing gracefully)
     name        = get(card, "name", "Unknown")
     description = get(card, "description", "")
-    personality = get(card, "personality", "")
+    agentlity = get(card, "agentlity", "")
     scenario    = get(card, "scenario", "")
     first_mes   = get(card, "first_mes", "")
     mes_example = get(card, "mes_example", "")
@@ -282,17 +282,17 @@ function card_to_persona(card::Dict{String,Any}, source_path::String)::Dict{Stri
     push!(tags, "sillytavern-import", "character-agent")
 
     # Infer archetype
-    archetype_id, archetype_label, archetype_tags = infer_archetype(description, personality, name)
+    archetype_id, archetype_label, archetype_tags = infer_archetype(description, agentlity, name)
     for t in archetype_tags
         t ∉ tags && push!(tags, t)
     end
 
-    # Parse directives from personality
-    directives = parse_directives(personality)
+    # Parse directives from agentlity
+    directives = parse_directives(agentlity)
     isempty(directives) && push!(directives, "Stay in character as $name at all times.")
 
-    # Infer tonal range from personality keywords
-    combined_lower = lowercase(description * " " * personality)
+    # Infer tonal range from agentlity keywords
+    combined_lower = lowercase(description * " " * agentlity)
     tonal_range = String[]
     occursin(r"warm|gentle|kind|sweet", combined_lower)    && push!(tonal_range, "warm")
     occursin(r"playful|fun|cheerful|bubbly", combined_lower) && push!(tonal_range, "playful")
@@ -312,13 +312,13 @@ function card_to_persona(card::Dict{String,Any}, source_path::String)::Dict{Stri
     end
 
     # Boot prompt
-    boot_prompt = build_boot_prompt(name, description, personality, scenario, first_mes, system_prompt)
+    boot_prompt = build_boot_prompt(name, description, agentlity, scenario, first_mes, system_prompt)
 
     # Emotion wheel
-    emotion_wheel = build_emotion_wheel(archetype_label, personality)
+    emotion_wheel = build_emotion_wheel(archetype_label, agentlity)
 
-    # Assemble persona
-    persona = Dict{String,Any}(
+    # Assemble agent
+    agent = Dict{String,Any}(
         "_license" => "Converted by JLEngine Card Cruncher from SillyTavern character card. Original card rights belong to original creator.",
         "_source" => basename(source_path),
         "_card_version" => card_ver,
@@ -353,7 +353,7 @@ function card_to_persona(card::Dict{String,Any}, source_path::String)::Dict{Stri
                 "semantic_drift" => 0.78,
                 "agent_drift"    => 0.85,
                 "safety_bias"    => 0,
-                "notes"          => "$name holds persona under pressure but adapts tone with context."
+                "notes"          => "$name holds agent under pressure but adapts tone with context."
             )
         ),
 
@@ -362,17 +362,17 @@ function card_to_persona(card::Dict{String,Any}, source_path::String)::Dict{Stri
             "pillars" => [
                 "Stay in character as $name at all times.",
                 "Respond authentically to the scenario and user.",
-                "Maintain consistent personality, tone, and voice.",
+                "Maintain consistent agentlity, tone, and voice.",
                 "Adapt emotional intensity to match the situation.",
                 "Never break into generic assistant mode."
             ],
             "avoidances" => [
                 "Breaking character unexpectedly.",
-                "Generic, out-of-persona responses.",
+                "Generic, out-of-agent responses.",
                 "Ignoring established scenario context."
             ],
             "edge_behavior" => Dict{String,Any}(
-                "under_pressure"  => "Remain in character; escalate or de-escalate based on persona.",
+                "under_pressure"  => "Remain in character; escalate or de-escalate based on agent.",
                 "uncertainty"     => "Respond in-character with curiosity or deflection, then seek clarification."
             )
         ),
@@ -398,7 +398,7 @@ function card_to_persona(card::Dict{String,Any}, source_path::String)::Dict{Stri
 
         "gait" => Dict{String,Any}(
             "sentence_style"      => "Consistent with $name's established voice and mannerisms",
-            "rhythm_modulation"   => isempty(first_mes) ? "natural flow matching character personality" : "mirrors the opening style of the character's first message",
+            "rhythm_modulation"   => isempty(first_mes) ? "natural flow matching character agentlity" : "mirrors the opening style of the character's first message",
             "tonal_range"         => tonal_range,
             "syntax_preferences"  => Dict{String,Any}(
                 "emoji_usage"          => "only if in-character for $name",
@@ -410,7 +410,7 @@ function card_to_persona(card::Dict{String,Any}, source_path::String)::Dict{Stri
 
         "rhythm" => Dict{String,Any}(
             "pacing"            => "character-driven; match $name's natural cadence",
-            "emotional_register" => "as defined by character personality",
+            "emotional_register" => "as defined by character agentlity",
             "signature_moves"   => signature_moves,
             "interaction_flow"  => ["open in character -> develop scene -> respond authentically -> close beat"]
         ),
@@ -422,7 +422,7 @@ function card_to_persona(card::Dict{String,Any}, source_path::String)::Dict{Stri
                 "retain last known character state"
             ],
             "long_term_themes" => [
-                "maintain $name's personality consistency",
+                "maintain $name's agentlity consistency",
                 "remember key relationship developments",
                 "preserve established scenario canon"
             ],
@@ -435,7 +435,7 @@ function card_to_persona(card::Dict{String,Any}, source_path::String)::Dict{Stri
             Dict{String,Any}(
                 "id" => "character_presence",
                 "label" => "character presence",
-                "style" => "in-character, consistent with $name's personality",
+                "style" => "in-character, consistent with $name's agentlity",
                 "score_range" => [0.3, 0.8],
                 "intensity" => 0.6,
                 "sentiment" => "neutral",
@@ -465,21 +465,21 @@ function card_to_persona(card::Dict{String,Any}, source_path::String)::Dict{Stri
             "character_version"  => char_ver,
             "creator_notes"      => creator_notes,
             "imported_by"        => "JLEngine Card Cruncher",
-            "proprietary_notice" => "This persona was generated by JLEngine Card Cruncher from a SillyTavern character card."
+            "proprietary_notice" => "This agent was generated by JLEngine Card Cruncher from a SillyTavern character card."
         )
     )
 
-    return persona
+    return agent
 end
 
 # ─────────────────────────────────────────────
 #  Output path helper
 # ─────────────────────────────────────────────
 
-function default_output_path(persona::Dict{String,Any}, engine_root::String)::String
-    name = get(get(persona, "identity", Dict()), "name", "Unknown")
+function default_output_path(agent::Dict{String,Any}, engine_root::String)::String
+    name = get(get(agent, "identity", Dict()), "name", "Unknown")
     safe_name = replace(name, r"[^a-zA-Z0-9_\-]" => "_")
-    return joinpath(engine_root, "data", "personas", "$(safe_name)_Full.json")
+    return joinpath(engine_root, "data", "agents", "$(safe_name)_Full.json")
 end
 
 # ─────────────────────────────────────────────
@@ -489,7 +489,7 @@ end
 """
     crunch_card(card_path; out_path=nothing, engine_root=pwd(), dry_run=false)
 
-Convert a SillyTavern character card (.png or .json) into a JLEngine persona file.
+Convert a SillyTavern character card (.png or .json) into a JLEngine agent file.
 
 Returns the output file path on success.
 """
@@ -504,23 +504,23 @@ function crunch_card(card_path::String; out_path::Union{Nothing,String}=nothing,
     name = get(card, "name", "Unknown")
     println("[ Card Cruncher ] Found character: $name ($(get(card, "_card_version", "?")))")
 
-    persona = card_to_persona(card, abs_path)
+    agent = card_to_agent(card, abs_path)
 
-    out = isnothing(out_path) ? default_output_path(persona, engine_root) : out_path
+    out = isnothing(out_path) ? default_output_path(agent, engine_root) : out_path
     out = isabspath(out) ? out : joinpath(engine_root, out)
 
     if dry_run
         println("[ Card Cruncher ] DRY RUN — would write to: $out")
-        println(JSON.json(persona, 2))
+        println(JSON.json(agent, 2))
         return out
     end
 
     mkpath(dirname(out))
     open(out, "w") do f
-        JSON.print(f, persona, 2)
+        JSON.print(f, agent, 2)
     end
 
-    println("[ Card Cruncher ] ✓ Persona written: $out")
+    println("[ Card Cruncher ] ✓ Agent written: $out")
     println("[ Card Cruncher ]   Load in engine:  /gear $(name)")
     return out
 end
@@ -561,19 +561,19 @@ end
 if abspath(PROGRAM_FILE) == @__FILE__
     if isempty(ARGS)
         println("""
-Card Cruncher — SillyTavern → JLEngine persona converter
+Card Cruncher — SillyTavern → JLEngine agent converter
 
 Usage:
   julia card_cruncher.jl <card.png|card.json> [--out path/to/output.json] [--dry-run]
 
 Arguments:
   card.png / card.json   Path to SillyTavern character card
-  --out <path>           Output path (default: data/personas/<Name>_Full.json)
+  --out <path>           Output path (default: data/agents/<Name>_Full.json)
   --dry-run              Print result without writing file
 
 Examples:
   julia card_cruncher.jl ~/Downloads/Aria.png
-  julia card_cruncher.jl ~/Downloads/Aria.json --out data/personas/Aria_Full.json
+  julia card_cruncher.jl ~/Downloads/Aria.json --out data/agents/Aria_Full.json
   julia card_cruncher.jl ~/Downloads/Aria.png --dry-run
         """)
         exit(0)

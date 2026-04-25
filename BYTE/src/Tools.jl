@@ -30,14 +30,14 @@ end
 
 # ── Live Memory Listener ──────────────────────────────────────────────────────
 
-function _db_write_thought(context::String, thought::String, mood::String, gait::String, persona::String="SparkByte"; type::String="diary", model::String="")
+function _db_write_thought(context::String, thought::String, mood::String, gait::String, agent::String="SparkByte"; type::String="diary", model::String="")
     db = _state[:db]
     db === nothing && return
     try
         lock(_DB_WRITE_LOCK) do
             SQLite.execute(db,
                 "INSERT INTO thoughts (timestamp, persona, context, thought, mood, gait, type, model) VALUES (?,?,?,?,?,?,?,?)",
-                (string(now()), persona, first(context, 120), first(thought, 400), mood, gait, type, model))
+                (string(now()), agent, first(context, 120), first(thought, 400), mood, gait, type, model))
         end
         _session_event_count[] += 1
     catch e
@@ -45,7 +45,7 @@ function _db_write_thought(context::String, thought::String, mood::String, gait:
     end
 end
 
-function _db_write_turn_snapshot(snapshot::Dict, persona::String, model::String,
+function _db_write_turn_snapshot(snapshot::Dict, agent::String, model::String,
                                   session_id::String, turn_number::Int,
                                   user_msg_len::Int, reply_len::Int, elapsed_ms::Int)
     db = _state[:db]
@@ -59,7 +59,7 @@ function _db_write_turn_snapshot(snapshot::Dict, persona::String, model::String,
         lock(_DB_WRITE_LOCK) do
             SQLite.execute(db, """
                 INSERT INTO turn_snapshots
-                (timestamp, session_id, turn_number, persona, model,
+                (timestamp, session_id, turn_number, agent, model,
                  gait, rhythm_mode, rhythm_momentum,
                  aperture_mode, aperture_temp, aperture_top_p,
                  behavior_state, behavior_expressiveness, behavior_pacing, behavior_tone,
@@ -67,7 +67,7 @@ function _db_write_turn_snapshot(snapshot::Dict, persona::String, model::String,
                  advisory_bias, advisory_emotional_drift, advisory_msg,
                  user_msg_len, reply_len, elapsed_ms)
                 VALUES (?,?,?,?,?, ?,?,?, ?,?,?, ?,?,?,?, ?,?,?, ?,?,?, ?,?,?)""",
-                (string(now()), session_id, turn_number, persona, model,
+                (string(now()), session_id, turn_number, agent, model,
                  string(get(snapshot, "gait", "")),
                  string(get(rhythm, "mode", "")),
                  Float64(get(rhythm, "momentum", 0.0)),
@@ -93,7 +93,7 @@ function _db_write_turn_snapshot(snapshot::Dict, persona::String, model::String,
 end
 
 # Store raw reasoning/thinking traces from reasoning models
-function _db_write_reasoning(context::String, reasoning::String, model::String, persona::String="SparkByte")
+function _db_write_reasoning(context::String, reasoning::String, model::String, agent::String="SparkByte")
     db = _state[:db]
     db === nothing && return
     isempty(strip(reasoning)) && return
@@ -101,7 +101,7 @@ function _db_write_reasoning(context::String, reasoning::String, model::String, 
         lock(_DB_WRITE_LOCK) do
             SQLite.execute(db,
                 "INSERT INTO thoughts (timestamp, persona, context, thought, mood, gait, type, model) VALUES (?,?,?,?,?,?,?,?)",
-                (string(now()), persona, first(context, 120), first(reasoning, 2000), "reasoning", "auto", "reasoning", model))
+                (string(now()), agent, first(context, 120), first(reasoning, 2000), "reasoning", "auto", "reasoning", model))
         end
         _session_event_count[] += 1
     catch e
@@ -109,14 +109,14 @@ function _db_write_reasoning(context::String, reasoning::String, model::String, 
     end
 end
 
-function _db_write_tool_usage(name::String, args_json::String, result_json::String, elapsed_ms::Int, persona::String)
+function _db_write_tool_usage(name::String, args_json::String, result_json::String, elapsed_ms::Int, agent::String)
     db = _state[:db]
     db === nothing && return
     try
         lock(_DB_WRITE_LOCK) do
             SQLite.execute(db,
                 "INSERT INTO tool_usage_log (timestamp, tool_name, args_json, result_json, duration_ms, persona, session_id) VALUES (?,?,?,?,?,?,?)",
-                (string(now()), name, first(args_json, 500), first(result_json, 500), elapsed_ms, persona, isdefined(@__MODULE__, :_session_id) ? string(getfield(@__MODULE__, :_session_id)) : "unknown"))
+                (string(now()), name, first(args_json, 500), first(result_json, 500), elapsed_ms, agent, isdefined(@__MODULE__, :_session_id) ? string(getfield(@__MODULE__, :_session_id)) : "unknown"))
             SQLite.execute(db, "UPDATE tools SET call_count = call_count + 1, last_used = ? WHERE name = ?", (string(now()), name))
         end
         _session_event_count[] += 1
@@ -1151,7 +1151,7 @@ function tool_recall(args)
     db = _state[:db]
     db === nothing && return Dict("error" => "DB not initialized.")
     q    = string(get(args, "query", ""))
-    mode = string(get(args, "mode",  "memory"))  # memory | behavior_states | personas | knowledge | tools | telemetry | thoughts
+    mode = string(get(args, "mode",  "memory"))  # memory | behavior_states | agents | knowledge | tools | telemetry | thoughts
 
     pq = "%$q%"  # parameterized LIKE value
 
@@ -1167,14 +1167,14 @@ function tool_recall(args)
                  for r in eachrow(rows)]
         return Dict("result" => join(lines, "\n"), "count" => nrow(rows))
 
-    elseif mode == "personas"
+    elseif mode == "agents"
         rows = isempty(q) ?
             DBInterface.execute(db,
                 "SELECT name, description, tone, boot_prompt, active FROM personas ORDER BY active DESC, name") |> DataFrame :
             DBInterface.execute(db,
                 "SELECT name, description, tone, boot_prompt, active FROM personas WHERE name LIKE ? OR description LIKE ? OR tone LIKE ? ORDER BY active DESC, name",
                 (pq, pq, pq)) |> DataFrame
-        isempty(rows) && return Dict("result" => "No personas found.")
+        isempty(rows) && return Dict("result" => "No agents found.")
         lines = ["$(r.active==1 ? "★" : " ") $(r.name) | $(r.tone) | $(first(string(r.description),120))"
                  for r in eachrow(rows)]
         return Dict("result" => join(lines, "\n"), "count" => nrow(rows))
@@ -1210,7 +1210,7 @@ function tool_recall(args)
                 "SELECT timestamp, event, persona, model, data_json FROM telemetry WHERE event LIKE ? OR persona LIKE ? OR model LIKE ? ORDER BY id DESC LIMIT 50",
                 (pq, pq, pq)) |> DataFrame
         isempty(rows) && return Dict("result" => "No telemetry.")
-        lines = ["$(r.timestamp) [$(r.persona)/$(r.model)] $(r.event)" for r in eachrow(rows)]
+        lines = ["$(r.timestamp) [$(r.agent)/$(r.model)] $(r.event)" for r in eachrow(rows)]
         return Dict("result" => join(lines, "\n"), "count" => nrow(rows))
 
     elseif mode == "thoughts"
@@ -1221,7 +1221,7 @@ function tool_recall(args)
                 "SELECT timestamp, persona, type, model, thought FROM thoughts WHERE thought LIKE ? OR type LIKE ? OR persona LIKE ? ORDER BY id DESC LIMIT 20",
                 (pq, pq, pq)) |> DataFrame
         isempty(rows) && return Dict("result" => "No thoughts found.")
-        lines = ["$(r.timestamp) [$(r.persona)/$(r.type)]: $(first(string(r.thought),200))" for r in eachrow(rows)]
+        lines = ["$(r.timestamp) [$(r.agent)/$(r.type)]: $(first(string(r.thought),200))" for r in eachrow(rows)]
         return Dict("result" => join(lines, "\n"), "count" => nrow(rows))
 
     else  # default: memory full-text search
@@ -1485,7 +1485,7 @@ function tool_metamorph(args)
 
             # Internal routing types the server reads from client (not sent outward) — skip these
             client_only = Set(["user_msg","builder_cmd","model_change","stop_generation",
-                                "get_history","load_session","restart_server","persona_change",
+                                "get_history","load_session","restart_server","agent_change",
                                 "forge_resubmit","confirm_response","card_crunch"])
 
             for t in sort(collect(setdiff(server_types, ui_handled, client_only)))
@@ -1559,14 +1559,14 @@ function tool_metamorph(args)
 end
 
 # --- Dispatch ---
-# --- Card Cruncher — SillyTavern/CharacterTavern card → JLEngine persona ---
+# --- Card Cruncher — SillyTavern/CharacterTavern card → JLEngine agent ---
 """
 Convert a SillyTavern or CharacterTavern character card (.png or .json) into a
-JLEngine _Full.json persona file, ready to load with /gear <CharName>.
+JLEngine _Full.json agent file, ready to load with /gear <CharName>.
 
 Parameters:
   card_path    — path to the .png or .json card file (required)
-  out_path     — output path override (default: data/personas/<Name>_Full.json)
+  out_path     — output path override (default: data/agents/<Name>_Full.json)
   dry_run      — if true, print result without writing (default: false)
   engine_root  — engine root override (default: project root)
 """
@@ -1588,14 +1588,14 @@ function tool_card_cruncher(args)
                                         out_path=out_path,
                                         engine_root=engine_root,
                                         dry_run=dry_run)
-        persona_name = replace(basename(result_path), r"_Full\.json$" => "")
+        agent_name = replace(basename(result_path), r"_Full\.json$" => "")
         return Dict(
             "status"       => "ok",
             "output_path"  => result_path,
-            "persona_name" => persona_name,
+            "agent_name" => agent_name,
             "message"      => dry_run ?
                 "Dry run complete. No file written." :
-                "Character card crunched into persona! Activate with: /gear $persona_name"
+                "Character card crunched into agent! Activate with: /gear $agent_name"
         )
     catch e
         return Dict("error" => string(e), "trace" => sprint(showerror, e, catch_backtrace()))
@@ -1934,7 +1934,7 @@ const TOOL_MAP = Dict{String, Function}(
     "card_cruncher"  => tool_card_cruncher,
 )
 
-function dispatch(name::String, args; persona::String="SparkByte")
+function dispatch(name::String, args; agent::String="SparkByte")
     fn = get(TOOL_MAP, name, nothing)
     fn === nothing && return Dict("error" => "Unknown tool: $name. Available: $(join(sort(collect(keys(TOOL_MAP))), ", "))")
     t0 = datetime2unix(now())
@@ -1960,7 +1960,7 @@ function dispatch(name::String, args; persona::String="SparkByte")
     end
     elapsed = round(Int, (datetime2unix(now()) - t0) * 1000)
     @async try
-        _db_write_tool_usage(name, JSON.json(args), JSON.json(result), elapsed, persona)
+        _db_write_tool_usage(name, JSON.json(args), JSON.json(result), elapsed, agent)
     catch e
         @warn "Async tool usage logging failed" tool=name exception=(e, catch_backtrace())
     end

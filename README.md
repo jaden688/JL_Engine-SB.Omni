@@ -29,7 +29,7 @@ graph TB
         RHYTHM["RhythmEngine\nflip/flop/trot"]
         APE["EmotionalAperture\nOPEN/FOCUSED/TIGHT"]
         MEM["HybridMemorySystem"]
-        PERSONA["PersonaManager"]
+        PERSONA["AgentManager"]
         STATE["StateManager\nStability + Advisory"]
     end
 
@@ -68,7 +68,7 @@ flowchart LR
     subgraph PIPELINE["JLEngine — Per Turn"]
         SIG["SignalScorer\nsentiment · arousal · pace\nconfusion · intent · memory density"]
         BSM["BehaviorStateMachine\n5 intensity × 4 control\n= 20 named states"]
-        DRIFT["DriftPressure\n0.0 → 1.0\nhow far from persona alignment"]
+        DRIFT["DriftPressure\n0.0 → 1.0\nhow far from agent alignment"]
         RHYTHM["RhythmEngine\nflip · flop · trot\nresponse cadence"]
         APE["EmotionalAperture\nOPEN · FOCUSED · TIGHT\nsets LLM temp + top_p"]
         STATE["StateManager\nstability · advisory payload\ngating_bias · emotional_drift"]
@@ -76,7 +76,7 @@ flowchart LR
 
     SIG --> BSM --> DRIFT --> RHYTHM --> APE --> STATE
 
-    STATE --> PROMPT["Shaped Prompt\n+ memory + persona + advisory"]
+    STATE --> PROMPT["Shaped Prompt\n+ memory + agent + advisory"]
     PROMPT --> LLM["LLM Backend\nGemini · Ollama · OpenAI · XAI"]
     LLM --> RESPONSE["Response"]
 ```
@@ -200,7 +200,7 @@ graph LR
         T6["search_julian_quarry"]
         T7["get_knowledge"]
         R1["sparkbyte://skill"]
-        R2["sparkbyte://personas"]
+        R2["sparkbyte://agents"]
     end
 
     DB[("sparkbyte_memory.db")]
@@ -230,9 +230,9 @@ The MCP bridge stays local/read-only. If you want to sell the product, the real 
 
 ---
 
-## Personas
+## Agents
 
-| Persona | Vibe | Drive |
+| Agent | Vibe | Drive |
 |---------|------|-------|
 | **SparkByte** | Sassy, playful, fast-talking junior engineer | Creative + Technical |
 | **Slappy** | Chaotic hillbilly gremlin energy | Chaos |
@@ -240,7 +240,7 @@ The MCP bridge stays local/read-only. If you want to sell the product, the real 
 | **Temporal** | Analytical, temporal/quantum reasoning | Logic |
 | **Supervisor** | Safe, grounding, helper mode | Stability |
 
-Switch in chat: `/gear SparkByte` &nbsp;|&nbsp; Switch in code: `set_persona!(engine, "SparkByte")`
+Switch in chat: `/gear SparkByte` &nbsp;|&nbsp; Switch in code: `set_agent!(engine, "SparkByte")`
 
 ---
 
@@ -314,7 +314,7 @@ JL_Engine-SB.Omni/
 │       ├── Rhythm.jl         # Rhythm engine
 │       ├── Aperture.jl       # Emotional aperture
 │       ├── Memory.jl         # Hybrid memory
-│       ├── PersonaManager.jl # Persona loading
+│       ├── AgentManager.jl # Agent loading
 │       ├── Backends.jl       # LLM provider routing
 │       └── State.jl          # Advisory + stability
 │
@@ -322,7 +322,7 @@ JL_Engine-SB.Omni/
 │   └── server.py             # MCP stdio server (read-only bridge)
 │
 ├── data/
-│   ├── personas/             # Fat JSON persona profiles
+│   ├── agents/             # Fat JSON agent profiles
 │   ├── behavior_states.json  # 5×4 behavior grid definitions
 │   └── JLframe_Engine_Framework.json
 │

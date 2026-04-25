@@ -6,7 +6,7 @@ Use this file when continuing work in another IDE, agent, or machine. The canoni
 
 ## What this repo is
 
-- **JL Engine (`src/JLEngine/`)** — Behavioral middleware per turn: signals → behavior grid → drift → rhythm → emotional aperture → state; SQLite-backed memory; MPF personas.
+- **JL Engine (`src/JLEngine/`)** — Behavioral middleware per turn: signals → behavior grid → drift → rhythm → emotional aperture → state; SQLite-backed memory; MPF agents.
 - **BYTE (`BYTE/src/`)** — WebSocket UI + agentic loop (LLM ↔ tools), `forge_new_tool`, Playwright `browse_url`, etc.
 - **Entry:** `julia sparkbyte.jl` → UI **`http://127.0.0.1:8081`**
 - **A2A** — `a2a_server.jl`; HTTP on **`8082`** by default (`/.well-known/agent.json`, JSON-RPC `tasks/send`). Booted from `src/App.jl` via `start_a2a_server`.
@@ -21,7 +21,7 @@ Workspace often lives under:
 
 `jl-vs\vscode-main\copilot-separate-leopard`
 
-Adjust if the user clones elsewhere. **`SPARKBYTE_ROOT`** can override runtime discovery (must contain `data/personas/Personas.mpf.json`).
+Adjust if the user clones elsewhere. **`SPARKBYTE_ROOT`** can override runtime discovery (must contain `data/agents/Agents.mpf.json`).
 
 ---
 
@@ -108,7 +108,7 @@ On boot, **`App.jl`** calls **`_sync_julian_env!(root)`** so embedded `JulianMet
 
 | File | Purpose |
 |------|---------|
-| `README.md` | Architecture, tools, personas, MCP diagram |
+| `README.md` | Architecture, tools, agents, MCP diagram |
 | `DOCKER.md` | Docker, Compose, A2A/Julian ops |
 | `.env.example` | Env template |
 | `.github/copilot-instructions.md` (if present) | VS Code / Copilot workspace hints |

@@ -27,7 +27,7 @@ I've been building SparkByte, a Julia-native AI agent engine that takes a differ
 
 - **Multi-backend**: Works with Ollama (local), Google Gemini, OpenAI, Cerebras, xAI, or any OpenAI-compatible endpoint. Not locked to any provider.
 
-- **5 personas**: Each with distinct emotional palettes, drive types, and behavioral profiles. Switchable at runtime.
+- **5 agents**: Each with distinct emotional palettes, drive types, and behavioral profiles. Switchable at runtime.
 
 **Tech stack**: Julia (engine core + BYTE agentic loop + A2A server), Python (MCP bridge + JulianMetaMorph GitHub intelligence), SQLite (memory + tools + telemetry), WebSocket (browser UI), Docker ready.
 

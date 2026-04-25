@@ -445,8 +445,8 @@ function _a2a_skill_from_decl(decl)::Dict{String,Any}
     if occursin("bluetooth", name)
         push!(tags, "hardware", "bluetooth")
     end
-    if occursin("persona", name) || occursin("card", name)
-        push!(tags, "persona")
+    if occursin("agent", name) || occursin("card", name)
+        push!(tags, "agent")
     end
     isempty(tags) && push!(tags, "utility")
     short_desc = isempty(desc) ? "" : (length(desc) > 120 ? first(desc, 120) : desc)

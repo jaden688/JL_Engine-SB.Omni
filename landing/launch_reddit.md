@@ -15,7 +15,7 @@ Instead of just prompt chaining, it runs a behavioral state machine every turn: 
 **Why it matters for local LLM users:**
 
 - Works with **Ollama** out of the box (default: qwen3:4b). Also supports Gemini, OpenAI, Cerebras, xAI, or any OpenAI-compatible endpoint.
-- The behavioral layer means even smaller models produce more consistent, persona-driven responses.
+- The behavioral layer means even smaller models produce more consistent, agent-driven responses.
 - **forge_new_tool** lets the agent write and eval Julia tools at runtime — no restart needed. Your agent builds its own capabilities.
 - Real tools: file I/O, shell, Playwright browser, GitHub scraping, SMS, Discord.
 - MCP bridge so Claude Code / Cursor can query your local engine.
@@ -55,7 +55,7 @@ Wanted to share a project I've been building in Julia. SparkByte is an AI agent 
 
 - **SignalScorer** — scores user messages for sentiment, arousal, directive intent, confusion, pace
 - **BehaviorStateMachine** — 5x4 grid of named states controlling expressiveness, pacing, tone bias
-- **DriftPressureSystem** — tracks persona alignment drift (0.0-1.0)
+- **DriftPressureSystem** — tracks agent alignment drift (0.0-1.0)
 - **RhythmEngine** — flip/flop/trot cadence modes
 - **EmotionalAperture** — dynamically sets LLM temperature/top_p per turn
 - **HybridMemorySystem** — SQLite-backed with breadcrumbs, intent tracking, interaction history

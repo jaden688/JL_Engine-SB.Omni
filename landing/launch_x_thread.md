@@ -18,7 +18,7 @@ Every agent framework in 2026 does the same thing:
 
 Prompt chain -> LLM -> tools -> repeat.
 
-No memory of HOW it should respond. No personality persistence. No behavioral awareness.
+No memory of HOW it should respond. No agentlity persistence. No behavioral awareness.
 
 SparkByte fixes this with a middleware layer that sits between you and the LLM.
 
@@ -69,8 +69,8 @@ OS-level agent.
 
 ---
 
-**Tweet 7 (Personas):**
-5 built-in personas, each with unique emotional palettes and behavioral profiles:
+**Tweet 7 (Agents):**
+5 built-in agents, each with unique emotional palettes and behavioral profiles:
 
 - SparkByte — Sassy engineer
 - Slappy — Chaotic gremlin energy

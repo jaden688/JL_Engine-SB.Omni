@@ -1,16 +1,16 @@
 const APERTURE_MODIFIERS = Dict(
-    "CLOSED" => Dict("temperature" => 0.10, "top_p" => 0.20, "persona_amplitude" => 0.05, "creativity_bias" => 0.05, "expressiveness" => 0.06),
-    "GUARDED" => Dict("temperature" => 0.25, "top_p" => 0.45, "persona_amplitude" => 0.20, "creativity_bias" => 0.18, "expressiveness" => 0.22),
-    "BALANCED" => Dict("temperature" => 0.45, "top_p" => 0.70, "persona_amplitude" => 0.45, "creativity_bias" => 0.45, "expressiveness" => 0.50),
-    "OPEN" => Dict("temperature" => 0.65, "top_p" => 0.85, "persona_amplitude" => 0.70, "creativity_bias" => 0.75, "expressiveness" => 0.78),
-    "WIDE_OPEN" => Dict("temperature" => 0.85, "top_p" => 0.95, "persona_amplitude" => 0.95, "creativity_bias" => 0.98, "expressiveness" => 1.00),
+    "CLOSED" => Dict("temperature" => 0.10, "top_p" => 0.20, "agent_amplitude" => 0.05, "creativity_bias" => 0.05, "expressiveness" => 0.06),
+    "GUARDED" => Dict("temperature" => 0.25, "top_p" => 0.45, "agent_amplitude" => 0.20, "creativity_bias" => 0.18, "expressiveness" => 0.22),
+    "BALANCED" => Dict("temperature" => 0.45, "top_p" => 0.70, "agent_amplitude" => 0.45, "creativity_bias" => 0.45, "expressiveness" => 0.50),
+    "OPEN" => Dict("temperature" => 0.65, "top_p" => 0.85, "agent_amplitude" => 0.70, "creativity_bias" => 0.75, "expressiveness" => 0.78),
+    "WIDE_OPEN" => Dict("temperature" => 0.85, "top_p" => 0.95, "agent_amplitude" => 0.95, "creativity_bias" => 0.98, "expressiveness" => 1.00),
 )
 
 mutable struct EmotionalAperture
     drive_type::String
     current_emotion::Union{Nothing, String}
     current_emotion_meta::Union{Nothing, Dict{String, Any}}
-    persona_state::Union{Nothing, Dict{String, Any}}
+    agent_state::Union{Nothing, Dict{String, Any}}
     emotion_palette::Vector{Dict{String, Any}}
     focus_level::Float64
     overload_level::Float64
@@ -19,12 +19,12 @@ mutable struct EmotionalAperture
     last_state::Dict{String, Any}
 end
 
-function EmotionalAperture(; drive_type::AbstractString="spur", persona_state=nothing)
+function EmotionalAperture(; drive_type::AbstractString="spur", agent_state=nothing)
     return EmotionalAperture(
         String(drive_type),
         nothing,
         nothing,
-        persona_state isa Dict{String, Any} ? persona_state : persona_state isa AbstractDict ? Dict{String, Any}(string(key) => value for (key, value) in pairs(persona_state)) : nothing,
+        agent_state isa Dict{String, Any} ? agent_state : agent_state isa AbstractDict ? Dict{String, Any}(string(key) => value for (key, value) in pairs(agent_state)) : nothing,
         Dict{String, Any}[],
         0.0,
         0.0,
@@ -44,7 +44,7 @@ function set_emotion_palette!(aperture::EmotionalAperture, palette)
         aperture.emotion_palette = Dict{String, Any}[]
         aperture.current_emotion = nothing
         aperture.current_emotion_meta = nothing
-        _write_persona_emotion!(aperture, nothing, nothing)
+        _write_agent_emotion!(aperture, nothing, nothing)
         return aperture
     end
 
@@ -52,8 +52,8 @@ function set_emotion_palette!(aperture::EmotionalAperture, palette)
     return aperture
 end
 
-function set_persona_state!(aperture::EmotionalAperture, persona_state)
-    aperture.persona_state = persona_state isa Dict{String, Any} ? persona_state : persona_state isa AbstractDict ? Dict{String, Any}(string(key) => value for (key, value) in pairs(persona_state)) : nothing
+function set_agent_state!(aperture::EmotionalAperture, agent_state)
+    aperture.agent_state = agent_state isa Dict{String, Any} ? agent_state : agent_state isa AbstractDict ? Dict{String, Any}(string(key) => value for (key, value) in pairs(agent_state)) : nothing
     return aperture
 end
 
@@ -65,7 +65,7 @@ function reset!(aperture::EmotionalAperture)
     aperture.drift_bias = 0.0
     aperture.recent_sentiment = 0.0
     aperture.last_state = _build_state(0.25, "GUARDED", Dict{String, Any}(APERTURE_MODIFIERS["GUARDED"]), 0.0, 0.0, nothing, nothing, 0.0)
-    _write_persona_emotion!(aperture, nothing, nothing)
+    _write_agent_emotion!(aperture, nothing, nothing)
     return aperture
 end
 
@@ -78,7 +78,7 @@ function update_from_signals!(
     behavior_state=nothing,
     gait::AbstractString="walk",
     rhythm::AbstractString="flop",
-    persona_vividness::Real=0.6,
+    agent_vividness::Real=0.6,
     safety_mode::Bool=true,
     drift_pressure::Real=0.0,
     drift_bias::Real=0.0,
@@ -90,7 +90,7 @@ function update_from_signals!(
     behavior_intensity = behavior_state isa BehaviorState ? behavior_state.expressiveness : 0.5
     signal_payload = Dict{String, Any}(
         "behavior_intensity" => behavior_intensity,
-        "persona_vividness" => Float64(persona_vividness),
+        "agent_vividness" => Float64(agent_vividness),
         "safety_mode" => safety_mode,
         "drift_pressure" => Float64(drift_pressure),
         "drift_bias" => Float64(drift_bias),
@@ -135,7 +135,7 @@ function update_from_signal!(aperture::EmotionalAperture; emotion=nothing, focus
     aperture.last_state["overload_level"] = aperture.overload_level
     aperture.last_state["emotion"] = aperture.current_emotion
     aperture.last_state["emotion_meta"] = aperture.current_emotion_meta
-    _write_persona_emotion!(aperture, aperture.current_emotion, aperture.current_emotion_meta)
+    _write_agent_emotion!(aperture, aperture.current_emotion, aperture.current_emotion_meta)
     return Dict{String, Any}(aperture.last_state)
 end
 
@@ -167,7 +167,7 @@ end
 function _compute(aperture::EmotionalAperture, signals::AbstractDict)
     required = (
         "behavior_intensity",
-        "persona_vividness",
+        "agent_vividness",
         "safety_mode",
         "drift_pressure",
         "user_sentiment",
@@ -184,7 +184,7 @@ function _compute(aperture::EmotionalAperture, signals::AbstractDict)
 
     score = (
         _float_or(get(signals, "behavior_intensity", 0.5), 0.5) * 0.18 +
-        _float_or(get(signals, "persona_vividness", 0.5), 0.5) * 0.16 +
+        _float_or(get(signals, "agent_vividness", 0.5), 0.5) * 0.16 +
         _float_or(get(signals, "user_sentiment", 0.0), 0.0) * 0.22 +
         _float_or(get(signals, "conversation_pacing", 0.5), 0.5) * 0.08 +
         _float_or(get(signals, "memory_density", 0.0), 0.0) * 0.12 +
@@ -214,7 +214,7 @@ function _derive_focus_overload(signals::AbstractDict)
         _float_or(get(signals, "behavior_intensity", 0.5), 0.5) * 0.45 +
         (1.0 - _float_or(get(signals, "rhythm_variability", 0.5), 0.5)) * 0.20 +
         max(0.0, _float_or(get(signals, "conversation_pacing", 0.5), 0.5) - 0.4) * 0.15 +
-        max(0.0, _float_or(get(signals, "persona_vividness", 0.5), 0.5) - 0.3) * 0.10 +
+        max(0.0, _float_or(get(signals, "agent_vividness", 0.5), 0.5) - 0.3) * 0.10 +
         max(0.0, _float_or(get(signals, "user_sentiment", 0.0), 0.0)) * 0.10 -
         _float_or(get(signals, "drift_pressure", 0.0), 0.0) * 0.20
     )
@@ -346,7 +346,7 @@ function _apply_selected_emotion!(aperture::EmotionalAperture, entry)
         aperture.current_emotion_meta = nothing
         aperture.last_state["emotion"] = nothing
         aperture.last_state["emotion_meta"] = nothing
-        _write_persona_emotion!(aperture, nothing, nothing)
+        _write_agent_emotion!(aperture, nothing, nothing)
         return aperture
     end
 
@@ -364,12 +364,12 @@ function _apply_selected_emotion!(aperture::EmotionalAperture, entry)
     aperture.current_emotion_meta = meta
     aperture.last_state["emotion"] = aperture.current_emotion
     aperture.last_state["emotion_meta"] = meta
-    _write_persona_emotion!(aperture, aperture.current_emotion, meta)
+    _write_agent_emotion!(aperture, aperture.current_emotion, meta)
     return aperture
 end
 
-function _write_persona_emotion!(aperture::EmotionalAperture, label, meta)
-    aperture.persona_state isa AbstractDict || return
-    aperture.persona_state["emotion"] = label
-    aperture.persona_state["emotion_meta"] = meta
+function _write_agent_emotion!(aperture::EmotionalAperture, label, meta)
+    aperture.agent_state isa AbstractDict || return
+    aperture.agent_state["emotion"] = label
+    aperture.agent_state["emotion_meta"] = meta
 end

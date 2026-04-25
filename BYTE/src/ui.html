@@ -883,7 +883,7 @@ body{background:transparent;color:var(--green);height:100vh;height:100dvh;displa
   <span class="logo">⚡ JL_OS</span>
   <div class="tb-sep"></div>
   <span class="tb-label">JL Agent</span>
-  <select id="persona-select"><option>SparkByte</option></select>
+  <select id="agent-select"><option>SparkByte</option></select>
   <div class="tb-sep"></div>
   <span class="tb-label">Model</span>
   <select id="model-select">
@@ -1169,7 +1169,7 @@ body{background:transparent;color:var(--green);height:100vh;height:100dvh;displa
       <div class="sm-section">
         <label>Active JL Agent</label>
         <div class="sm-row">
-          <select id="settings-persona"></select>
+          <select id="settings-agent"></select>
         </div>
       </div>
       <div class="sm-section">
@@ -1318,7 +1318,7 @@ body{background:transparent;color:var(--green);height:100vh;height:100dvh;displa
 
       <div class="tl-section">
         <div class="tl-label">JL AGENT · MODEL</div>
-        <div class="tl-val" id="tl-persona-model">—</div>
+        <div class="tl-val" id="tl-agent-model">—</div>
       </div>
     </div>
   </div>
@@ -1437,7 +1437,7 @@ let fileViewerActive=false; // new flag
 const $=id=>document.getElementById(id);
 const chat=$('chat'), chatInput=$('chat-input'), gearVal=$('gear-val'), modeVal=$('mode-val');
 const fileInput=$('file-input'), attachIcon=$('attach-icon'), modelSelect=$('model-select');
-const personaSelect=$('persona-select'), codeEditor=$('code-editor'), editorEmpty=$('editor-empty');
+const agentSelect=$('agent-select'), codeEditor=$('code-editor'), editorEmpty=$('editor-empty');
 const tabBar=$('tab-bar'), terminal=$('terminal'), termInput=$('term-input');
 const searchInput=$('search-input'), searchResults=$('search-results');
 const sbFile=$('sb-file'), sbPos=$('sb-pos'), sbLang=$('sb-lang'), sbStatus=$('sb-status');
@@ -1869,7 +1869,7 @@ function connect(){
   ws.onopen=()=>{
     sbStatus.textContent='● Connected';
     sbStatus.style.color='var(--green)';
-    loadPersonas();
+    loadAgents();
     send({type:'builder_cmd',cmd:'get_settings'});
     _requestBackendProbe(false);
     refreshOllamaModels();
@@ -1936,7 +1936,7 @@ function connect(){
         setTimeout(refreshOllamaModels, 500);
       }
     }
-    else if(d.type==='personas_list'){populatePersonas(d.personas);}
+    else if(d.type==='agents_list'){populateAgents(d.agents);}
     else if(d.type==='search_results'){showSearchResults(d.results,d.query);}
     else if(d.type==='settings_all_status'){
       const MAP={gemini:'apikey-status',xai:'xai-key-status',openai:'openai-key-status',cerebras:'cerebras-key-status'};
@@ -2254,7 +2254,7 @@ function toggleEngineMode(){
 
 /* ====== FILE TREE ====== */
 function loadFileTree(){send({type:'builder_cmd',cmd:'list_tree'});}
-function loadPersonas(){send({type:'builder_cmd',cmd:'list_personas'});}
+function loadAgents(){send({type:'builder_cmd',cmd:'list_agents'});}
 
 function renderTree(files){
   const exts=['.jl','.json','.toml','.py','.md','.txt','.html','.css','.js','.yaml','.yml','.env','.gitignore'];
@@ -2629,11 +2629,11 @@ chatPanel.addEventListener('drop',e=>{
 });
 
 /* ====== PERSONA ====== */
-function populatePersonas(names){
-  personaSelect.innerHTML=names.map(n=>'<option value="'+n+'">'+n+'</option>').join('');
-  personaSelect.value='SparkByte';
+function populateAgents(names){
+  agentSelect.innerHTML=names.map(n=>'<option value="'+n+'">'+n+'</option>').join('');
+  agentSelect.value='SparkByte';
 }
-personaSelect.onchange=e=>send({type:'persona_change',persona:e.target.value});
+agentSelect.onchange=e=>send({type:'agent_change',agent:e.target.value});
 modelSelect.onchange=e=>send({type:'model_change',model:e.target.value});
 
 /* ====== SEARCH ====== */
@@ -2744,8 +2744,8 @@ function openSettings(){
   ov.classList.add('visible');
   // Sync dropdowns with current taskbar values
   $('settings-model').value=modelSelect.value;
-  $('settings-persona').innerHTML=personaSelect.innerHTML;
-  $('settings-persona').value=personaSelect.value;
+  $('settings-agent').innerHTML=agentSelect.innerHTML;
+  $('settings-agent').value=agentSelect.value;
   $('settings-gear').textContent=gearVal.textContent;
   $('settings-modes').textContent=modeVal.textContent;
   $('settings-ws-status').textContent=ws&&ws.readyState===1?'Connected':'Disconnected';
@@ -2763,7 +2763,7 @@ function saveSettings(){
   const ttsEnabled=$('settings-tts-enabled') ? $('settings-tts-enabled').checked : false;
   const ttsVoice=$('settings-tts-voice') ? $('settings-tts-voice').value : 'cedar';
   const model=$('settings-model').value;
-  const persona=$('settings-persona').value;
+  const agent=$('settings-agent').value;
   // Send all keys in one shot — server does one atomic .env write
   const payload={type:'builder_cmd',cmd:'save_settings'};
   if(key)          payload.api_key=key;
@@ -2779,13 +2779,13 @@ function saveSettings(){
   if(xaiKey){$('settings-xai-key').value='';}
   if(openaiKey){$('settings-openai-key').value='';}
   if(cerebrasKey){$('settings-cerebras-key').value='';}
-  // Apply model/persona changes
+  // Apply model/agent changes
   const modelOpt = Array.from(modelSelect.options||[]).find(o=>o.value===model);
   if(model!==modelSelect.value && (!modelOpt || !modelOpt.disabled)){
     modelSelect.value=model;
     modelSelect.dispatchEvent(new Event('change'));
   }
-  if(persona!==personaSelect.value){personaSelect.value=persona;personaSelect.dispatchEvent(new Event('change'));}
+  if(agent!==agentSelect.value){agentSelect.value=agent;agentSelect.dispatchEvent(new Event('change'));}
   closeSettings();
   termPrint('Settings saved.','info');
 }
@@ -2932,7 +2932,7 @@ function _applyTelemetry(d){
   _set('tl-last-tool', d.last_tool||'—');
   const msEl=$('tl-last-tool-ms');
   if(msEl) msEl.textContent = d.last_tool&&d.last_tool_ms ? (d.last_tool_ms/1000).toFixed(2)+'s' : '';
-  _set('tl-persona-model', (d.persona||'—')+' · '+(d.model||'—'));
+  _set('tl-agent-model', (d.agent||'—')+' · '+(d.model||'—'));
 }
 
 // ── Canvas BG renderer ──

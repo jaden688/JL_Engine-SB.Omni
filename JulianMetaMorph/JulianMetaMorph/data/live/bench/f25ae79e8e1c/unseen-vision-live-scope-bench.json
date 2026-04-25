@@ -95,7 +95,7 @@
     {
       "case": "spectral-echo",
       "title": "Spectral Echo",
-      "description": "Separates channel personalities so the field reveals color-phase drift.",
+      "description": "Separates channel agentlities so the field reveals color-phase drift.",
       "files": {
         "rgb": "C:\\JulianMetaMorph\\data\\live\\bench\\f25ae79e8e1c\\unseen-vision-live-scope-spectral-echo.png",
         "delay": "C:\\JulianMetaMorph\\data\\live\\bench\\f25ae79e8e1c\\unseen-vision-live-scope-spectral-echo-delay.png",

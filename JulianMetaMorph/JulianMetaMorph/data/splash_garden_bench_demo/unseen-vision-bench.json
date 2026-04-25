@@ -95,7 +95,7 @@
     {
       "case": "spectral-echo",
       "title": "Spectral Echo",
-      "description": "Separates channel personalities so the field reveals color-phase drift.",
+      "description": "Separates channel agentlities so the field reveals color-phase drift.",
       "files": {
         "rgb": "data\\splash_garden_bench_demo\\unseen-vision-spectral-echo.png",
         "delay": "data\\splash_garden_bench_demo\\unseen-vision-spectral-echo-delay.png",

@@ -4,8 +4,8 @@ using JLEngine
 const FIXTURES = joinpath(@__DIR__, "fixtures")
 
 @testset "JLEngine" begin
-    registry_path = joinpath(FIXTURES, "personas", "Personas.mpf.json")
-    persona_path = joinpath(FIXTURES, "personas", "SparkByte_Full.json")
+    registry_path = joinpath(FIXTURES, "agents", "Agents.mpf.json")
+    agent_path = joinpath(FIXTURES, "agents", "SparkByte_Full.json")
     behavior_path = joinpath(FIXTURES, "behavior_states.json")
 
     @testset "Config and MPF" begin
@@ -14,10 +14,10 @@ const FIXTURES = joinpath(@__DIR__, "fixtures")
 
         profiles = load_mpf_registry(registry_path)
         @test haskey(profiles, "SparkByte")
-        @test profiles["SparkByte"].persona_file == "SparkByte_Full.json"
+        @test profiles["SparkByte"].agent_file == "SparkByte_Full.json"
 
-        persona = load_persona_file(persona_path)
-        @test get_llm_boot_prompt(persona) == "You are SparkByte."
+        agent = load_agent_file(agent_path)
+        @test get_llm_boot_prompt(agent) == "You are SparkByte."
     end
 
     @testset "Signals" begin
@@ -42,7 +42,7 @@ const FIXTURES = joinpath(@__DIR__, "fixtures")
     @testset "Drift" begin
         system = DriftPressureSystem()
         pressure = calculate(system, DriftPressureInput(
-            persona_alignment_score=0.5,
+            agent_alignment_score=0.5,
             behavior_grid_alignment_score=0.5,
             safety_alignment_score=0.5,
             memory_alignment_score=0.5,
@@ -54,18 +54,18 @@ const FIXTURES = joinpath(@__DIR__, "fixtures")
     end
 
     @testset "Aperture" begin
-        persona = load_persona_file(persona_path)
+        agent = load_agent_file(agent_path)
         machine = BehaviorStateMachine(behavior_path)
         state = transition_by_trigger!(machine, "user_hyped", "walk")
-        persona_state = Dict{String, Any}()
-        aperture = EmotionalAperture(persona_state=persona_state)
-        set_emotion_palette!(aperture, persona["emotion_palette"])
+        agent_state = Dict{String, Any}()
+        aperture = EmotionalAperture(agent_state=agent_state)
+        set_emotion_palette!(aperture, agent["emotion_palette"])
         result = update_from_signals!(
             aperture;
             behavior_state=state,
             gait="trot",
             rhythm="trot",
-            persona_vividness=0.6,
+            agent_vividness=0.6,
             safety_mode=true,
             drift_pressure=0.1,
             user_sentiment=0.4,
@@ -74,7 +74,7 @@ const FIXTURES = joinpath(@__DIR__, "fixtures")
         )
         @test result["mode"] in ("BALANCED", "OPEN")
         @test result["emotion"] !== nothing
-        @test get(persona_state, "emotion", nothing) !== nothing
+        @test get(agent_state, "emotion", nothing) !== nothing
     end
 
     @testset "Memory" begin
@@ -93,8 +93,8 @@ const FIXTURES = joinpath(@__DIR__, "fixtures")
             ),
         )
         context = get_context(memory, "SparkByte")
-        @test length(context["persona_memory"]["recent_interactions"]) == 1
-        @test context["shared_memory"]["last_active_persona"] == "SparkByte"
+        @test length(context["agent_memory"]["recent_interactions"]) == 1
+        @test context["shared_memory"]["last_active_agent"] == "SparkByte"
     end
 
     @testset "State Manager" begin
@@ -105,11 +105,11 @@ const FIXTURES = joinpath(@__DIR__, "fixtures")
         @test export_snapshot(manager)["turn_count"] == 1
     end
 
-    @testset "Persona Manager" begin
+    @testset "Agent Manager" begin
         profiles = load_mpf_registry(registry_path)
-        spark = load_persona_file(persona_path)
-        manager = PersonaManager(FIXTURES, "personas")
-        set_active_persona!(manager, "SparkByte", spark, profiles)
+        spark = load_agent_file(agent_path)
+        manager = AgentManager(FIXTURES, "agents")
+        set_active_agent!(manager, "SparkByte", spark, profiles)
         update_dynamic_weight!(manager, TurnSignals(0.4, 0.7, false, 0.1, 0.6, 0.2); rhythm_state=Dict("variability" => 0.5), aperture_state=Dict("score" => 0.7))
         projection = get_projection(manager)
         @test haskey(projection, "dynamic_trait_weight")
@@ -173,11 +173,11 @@ const FIXTURES = joinpath(@__DIR__, "fixtures")
     @testset "Core" begin
         core = JLEngineCore(EngineConfig(root_dir=FIXTURES))
         snapshot = analyze_turn!(core, "Please be concise and help me debug this.")
-        @test snapshot["persona"] == "SparkByte"
+        @test snapshot["agent"] == "SparkByte"
         @test haskey(snapshot, "aperture_state")
         record_turn!(core, "Please be concise and help me debug this.", "Sure, let's debug it.")
         context = get_context(core.memory_system, "SparkByte")
-        @test length(context["persona_memory"]["recent_interactions"]) == 1
+        @test length(context["agent_memory"]["recent_interactions"]) == 1
         configure_backends!(brain_id="noop-stub")
         turn = run_turn!(core, "Say hello in one line.")
         @test turn["ok"] == true

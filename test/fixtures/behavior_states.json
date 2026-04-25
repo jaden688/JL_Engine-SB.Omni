@@ -25,7 +25,7 @@
     ],
     [
       { "id": "2,0", "name": "Engaged-Disciplined", "expressiveness": 0.5, "pacing": "normal", "tone_bias": "direct", "memory_strictness": "high" },
-      { "id": "2,1", "name": "Engaged-Loose", "expressiveness": 0.6, "pacing": "normal", "tone_bias": "personable", "memory_strictness": "medium" },
+      { "id": "2,1", "name": "Engaged-Loose", "expressiveness": 0.6, "pacing": "normal", "tone_bias": "agentble", "memory_strictness": "medium" },
       { "id": "2,2", "name": "Engaged-Erratic", "expressiveness": 0.7, "pacing": "energetic", "tone_bias": "playful", "memory_strictness": "low" },
       { "id": "2,3", "name": "Engaged-Chaotic", "expressiveness": 0.8, "pacing": "energetic", "tone_bias": "mischievous", "memory_strictness": "very_low" }
     ],

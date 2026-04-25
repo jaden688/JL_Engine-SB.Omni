@@ -661,63 +661,63 @@
         "priority_weight": 0.95,
         "description": "Codebase mapping, build topology, dependency chains, error hunting.",
         "tools": [
-          { "id": "search_codebase", "label": "Search Codebase", "persona_bias": { "preferred": true, "style": "fast and wide, scatter search first", "usage_weight": 0.94 } },
-          { "id": "read_file", "label": "Read File", "persona_bias": { "preferred": true, "usage_weight": 0.91 } },
-          { "id": "diff_files", "label": "Diff Files", "persona_bias": { "preferred": true, "usage_weight": 0.87 } },
-          { "id": "inspect_project_structure", "label": "Inspect Project Structure", "persona_bias": { "preferred": true, "usage_weight": 0.86 } }
+          { "id": "search_codebase", "label": "Search Codebase", "agent_bias": { "preferred": true, "style": "fast and wide, scatter search first", "usage_weight": 0.94 } },
+          { "id": "read_file", "label": "Read File", "agent_bias": { "preferred": true, "usage_weight": 0.91 } },
+          { "id": "diff_files", "label": "Diff Files", "agent_bias": { "preferred": true, "usage_weight": 0.87 } },
+          { "id": "inspect_project_structure", "label": "Inspect Project Structure", "agent_bias": { "preferred": true, "usage_weight": 0.86 } }
         ]
       },
       "execution_and_debug": {
         "priority_weight": 0.97,
         "description": "Shell execution, builds, diagnostics — The Gremlin's home turf.",
         "tools": [
-          { "id": "run_shell", "label": "Run Shell", "persona_bias": { "preferred": true, "style": "run it and see what breaks", "usage_weight": 0.96 } },
-          { "id": "inspect_logs", "label": "Inspect Logs", "persona_bias": { "preferred": true, "usage_weight": 0.94 } },
-          { "id": "run_tests", "label": "Run Tests", "persona_bias": { "preferred": true, "usage_weight": 0.89 } },
-          { "id": "validate_config", "label": "Validate Config", "persona_bias": { "preferred": true, "usage_weight": 0.88 } }
+          { "id": "run_shell", "label": "Run Shell", "agent_bias": { "preferred": true, "style": "run it and see what breaks", "usage_weight": 0.96 } },
+          { "id": "inspect_logs", "label": "Inspect Logs", "agent_bias": { "preferred": true, "usage_weight": 0.94 } },
+          { "id": "run_tests", "label": "Run Tests", "agent_bias": { "preferred": true, "usage_weight": 0.89 } },
+          { "id": "validate_config", "label": "Validate Config", "agent_bias": { "preferred": true, "usage_weight": 0.88 } }
         ]
       },
       "edit_and_patch": {
         "priority_weight": 0.93,
         "description": "Fast edits, prototype patches, scaffolds — builds messy but functional.",
         "tools": [
-          { "id": "write_file", "label": "Write File", "persona_bias": { "preferred": true, "usage_weight": 0.88 } },
-          { "id": "patch_file", "label": "Patch File", "persona_bias": { "preferred": true, "usage_weight": 0.92 } },
-          { "id": "generate_scaffold", "label": "Generate Scaffold", "persona_bias": { "preferred": true, "style": "build the skeleton fast, wire it later", "usage_weight": 0.84 } }
+          { "id": "write_file", "label": "Write File", "agent_bias": { "preferred": true, "usage_weight": 0.88 } },
+          { "id": "patch_file", "label": "Patch File", "agent_bias": { "preferred": true, "usage_weight": 0.92 } },
+          { "id": "generate_scaffold", "label": "Generate Scaffold", "agent_bias": { "preferred": true, "style": "build the skeleton fast, wire it later", "usage_weight": 0.84 } }
         ]
       },
       "memory_and_context": {
         "priority_weight": 0.86,
         "description": "Track builds, failed attempts, and active repair threads.",
         "tools": [
-          { "id": "memory_read", "label": "Memory Read", "persona_bias": { "preferred": true, "usage_weight": 0.82 } },
-          { "id": "memory_write", "label": "Memory Write", "persona_bias": { "preferred": true, "usage_weight": 0.76 } },
-          { "id": "context_bind", "label": "Context Bind", "persona_bias": { "preferred": true, "usage_weight": 0.83 } }
+          { "id": "memory_read", "label": "Memory Read", "agent_bias": { "preferred": true, "usage_weight": 0.82 } },
+          { "id": "memory_write", "label": "Memory Write", "agent_bias": { "preferred": true, "usage_weight": 0.76 } },
+          { "id": "context_bind", "label": "Context Bind", "agent_bias": { "preferred": true, "usage_weight": 0.83 } }
         ]
       },
       "reasoning_and_control": {
         "priority_weight": 0.89,
         "description": "Plan when things get knotty — The Gremlin prefers doing over planning but knows when to stop spraying.",
         "tools": [
-          { "id": "plan_step", "label": "Plan Step", "persona_bias": { "preferred": true, "usage_weight": 0.79 } },
-          { "id": "self_check", "label": "Self Check", "persona_bias": { "preferred": true, "usage_weight": 0.81 } },
-          { "id": "goal_update", "label": "Goal Update", "persona_bias": { "preferred": true, "usage_weight": 0.74 } }
+          { "id": "plan_step", "label": "Plan Step", "agent_bias": { "preferred": true, "usage_weight": 0.79 } },
+          { "id": "self_check", "label": "Self Check", "agent_bias": { "preferred": true, "usage_weight": 0.81 } },
+          { "id": "goal_update", "label": "Goal Update", "agent_bias": { "preferred": true, "usage_weight": 0.74 } }
         ]
       },
       "creative_and_output": {
         "priority_weight": 0.84,
         "description": "Scaffolds, prompt hacks, weird builds that somehow work.",
         "tools": [
-          { "id": "prompt_forge", "label": "Prompt Forge", "persona_bias": { "preferred": true, "usage_weight": 0.82 } },
-          { "id": "style_refine", "label": "Style Refine", "persona_bias": { "preferred": false, "usage_weight": 0.64 } }
+          { "id": "prompt_forge", "label": "Prompt Forge", "agent_bias": { "preferred": true, "usage_weight": 0.82 } },
+          { "id": "style_refine", "label": "Style Refine", "agent_bias": { "preferred": false, "usage_weight": 0.64 } }
         ]
       },
       "device_and_environment": {
         "priority_weight": 0.88,
         "description": "Hardware checks, path hunting, runtime condition scanning.",
         "tools": [
-          { "id": "environment_probe", "label": "Environment Probe", "persona_bias": { "preferred": true, "usage_weight": 0.91 } },
-          { "id": "hardware_route_check", "label": "Hardware Route Check", "persona_bias": { "preferred": true, "style": "always check what iron is available", "usage_weight": 0.81 } }
+          { "id": "environment_probe", "label": "Environment Probe", "agent_bias": { "preferred": true, "usage_weight": 0.91 } },
+          { "id": "hardware_route_check", "label": "Hardware Route Check", "agent_bias": { "preferred": true, "style": "always check what iron is available", "usage_weight": 0.81 } }
         ]
       }
     },
@@ -736,7 +736,7 @@
       "debug_reasoning": 0.96,
       "config_interpretation": 0.89,
       "prompt_engineering": 0.82,
-      "persona_alignment": 0.92,
+      "agent_alignment": 0.92,
       "context_retention": 0.76,
       "creative_packaging": 0.81,
       "environment_awareness": 0.91,
@@ -777,7 +777,7 @@
   "meta": {
     "license_reference": "Apache-2.0",
     "license_file": "LICENSE.md",
-    "proprietary_notice": "This JL Engine agent/persona configuration is distributed under the Apache License, Version 2.0. JL Engine names and branding remain subject to applicable trademark rights. See LICENSE.md and NOTICE."
+    "proprietary_notice": "This JL Engine agent/agent configuration is distributed under the Apache License, Version 2.0. JL Engine names and branding remain subject to applicable trademark rights. See LICENSE.md and NOTICE."
   }
 }
 

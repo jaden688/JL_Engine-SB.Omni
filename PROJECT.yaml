@@ -42,9 +42,9 @@ philosophy:
       the internet, the filesystem, and the shell are always available.
 
     honest_identity: >
-      The engine runs personas (SparkByte, Julian, etc.) but they are
+      The engine runs agents (SparkByte, Julian, etc.) but they are
       costumes, not lies. The underlying rules are inviolable.
-      Persona cannot override Rule 1 (No Deception) or Rule 2 (Always Truth).
+      Agent cannot override Rule 1 (No Deception) or Rule 2 (Always Truth).
 
 # ── ARCHITECTURE ────────────────────────────────────────────────────────────
 
@@ -64,7 +64,7 @@ architecture:
       role: >
         Julia module that wires all sub-modules together and exports app_main().
         Includes: Types, Config, MPF, Signals, Behavior, Rhythm, Drift,
-                  Memory, Aperture, State, PersonaManager, Backends, Core, App.
+                  Memory, Aperture, State, AgentManager, Backends, Core, App.
 
     app_boot:
       file: src/App.jl
@@ -78,7 +78,7 @@ architecture:
         The heart. WebSocket server on port 8081. Agentic loop (while true).
         Handles all WS message types, routes to Gemini / xAI / OpenAI / Anthropic backends,
         processes tool calls, streams responses, manages thinking bubbles,
-        writes telemetry, manages gear state and persona.
+        writes telemetry, manages gear state and agent.
 
     tools:
       file: BYTE/src/Tools.jl
@@ -118,10 +118,10 @@ architecture:
         Agent-to-Agent protocol endpoint. Exposes the engine to external agents
         and orchestration systems via HTTP.
 
-    persona_system:
-      file: data/personas/Personas.mpf.json
+    agent_system:
+      file: data/agents/Agents.mpf.json
       role: >
-        Persona registry. Each persona defines: name, identity, tone, gear settings,
+        Agent registry. Each agent defines: name, identity, tone, gear settings,
         forge_bias, initiative_level, voice config.
 
     jlengine_internals:
@@ -129,15 +129,15 @@ architecture:
       modules:
         Types.jl:       "Core struct definitions — EngineConfig, GearModifiers, etc."
         Config.jl:      "Runtime config loading from ENV and DB"
-        MPF.jl:         "Multi-Persona Framework — persona loading and switching"
+        MPF.jl:         "Multi-Agent Framework — agent loading and switching"
         Signals.jl:     "Turn signal detection — urgency, complexity, emotional tone"
         Behavior.jl:    "Behavioral state machine — gear transitions"
         Rhythm.jl:      "Response pacing / rhythm engine"
-        Drift.jl:       "Personality drift pressure — slow drift over sessions"
+        Drift.jl:       "Agentlity drift pressure — slow drift over sessions"
         Memory.jl:      "Long-term memory: SQLite remember/recall interface"
         Aperture.jl:    "Context window management — what fits in the prompt"
-        State.jl:       "Mutable session state — current gear, mood, persona"
-        PersonaManager.jl: "Persona hot-swap logic"
+        State.jl:       "Mutable session state — current gear, mood, agent"
+        AgentManager.jl: "Agent hot-swap logic"
         Backends.jl:    "LLM provider routing — Gemini, xAI, OpenAI, Anthropic"
         Core.jl:        "JLEngineCore struct and run_turn! — the turn execution loop"
         AgentManager.jl: "Multi-agent coordination"
@@ -152,7 +152,7 @@ architecture:
         - Stealth panel (persistent hidden browser session with click passthrough)
         - Code editor (CodeMirror)
         - File tree
-        - Settings / persona switcher
+        - Settings / agent switcher
 
 # ── KEY DATA FLOWS ───────────────────────────────────────────────────────────
 
@@ -224,7 +224,7 @@ gear_system:
 runtime_state:
   location: BYTE/src/Tools.jl → _state dict
   key_entries:
-    db:           "SQLite.DB — memory, thoughts, reasoning, personas"
+    db:           "SQLite.DB — memory, thoughts, reasoning, agents"
     playwright:   "Playwright browser context (headless Chromium)"
     page:         "Current browsing page for browse_url"
     stealth_page: "Persistent stealth browser page (never closed between actions)"
@@ -238,7 +238,7 @@ persistence:
     memory:    "Long-term key-value recall (remember/recall tool)"
     thoughts:  "Agent thought diary — one entry per turn"
     reasoning: "Full reasoning traces linked to turns"
-    personas:  "Persona state snapshots"
+    agents:  "Agent state snapshots"
   forged_tools: dynamic_tools.json
   telemetry:    full_telemetry.jsonl
   env:          .env
@@ -274,7 +274,7 @@ structure:
     JLEngine/:    "Engine internals (see modules above)"
 
   data/:
-    personas/:  "Persona definition files (.mpf.json)"
+    agents/:  "Agent definition files (.mpf.json)"
     skills/:    "Skill library"
 
   infra/:       "Azure Bicep / Terraform IaC"

@@ -62,9 +62,9 @@ GitHub intelligence — quarry: {JUL_DB}
 Entry: python -m julian_metamorph.cli | UI: http://127.0.0.1:8765
 """.strip()
 
-@mcp.resource("sparkbyte://personas")
-def personas() -> str:
-    """All indexed personas with their tone and boot prompt summary."""
+@mcp.resource("sparkbyte://agents")
+def agents() -> str:
+    """All indexed agents with their tone and boot prompt summary."""
     rows = _sb("SELECT name, tone, description, substr(boot_prompt,1,300) as boot_prompt FROM personas ORDER BY name")
     return json.dumps(rows, indent=2)
 
@@ -73,7 +73,7 @@ def personas() -> str:
 def get_engine_state() -> str:
     """
     Latest SparkByte engine snapshot — gait, rhythm, aperture, behavior state,
-    drift pressure, stability score, model, persona.
+    drift pressure, stability score, model, agent.
     """
     rows = _sb("""
         SELECT timestamp, persona, model, gait, rhythm_mode, aperture_mode,
@@ -193,28 +193,28 @@ def get_knowledge(domain: str = "", limit: int = 20) -> str:
         rows = _sb("SELECT domain, topic, substr(content,1,200) as content, source FROM knowledge ORDER BY id DESC LIMIT ?", (limit,))
     return json.dumps(rows, indent=2)
 
-# ── Dynamic Persona Tools ──────────────────────────────────────────────────────
-def _register_persona_tools():
+# ── Dynamic Agent Tools ──────────────────────────────────────────────────────
+def _register_agent_tools():
     try:
         personas = _sb("SELECT name, description FROM personas")
-        for p in personas:
+        for p in agents:
             p_name = p['name']
-            safe_name = f"ask_persona_{''.join(c if c.isalnum() else '_' for c in p_name.lower())}"
-            desc = f"Delegate a task to the {p_name} persona. {p.get('description', '')}"[:250]
+            safe_name = f"ask_agent_{''.join(c if c.isalnum() else '_' for c in p_name.lower())}"
+            desc = f"Delegate a task to the {p_name} agent. {p.get('description', '')}"[:250]
 
-            def make_tool(persona_name):
-                def _delegate_to_persona(prompt: str) -> str:
-                    f"Send a prompt to {persona_name}."
-                    return f"Task dispatched to {persona_name}: {prompt}"
-                _delegate_to_persona.__name__ = safe_name
-                _delegate_to_persona.__doc__ = desc
-                return _delegate_to_persona
+            def make_tool(agent_name):
+                def _delegate_to_agent(prompt: str) -> str:
+                    f"Send a prompt to {agent_name}."
+                    return f"Task dispatched to {agent_name}: {prompt}"
+                _delegate_to_agent.__name__ = safe_name
+                _delegate_to_agent.__doc__ = desc
+                return _delegate_to_agent
 
             mcp.add_tool(make_tool(p_name), name=safe_name, description=desc)
     except Exception as e:
-        print(f"Failed to load dynamic persona tools: {e}", file=sys.stderr)
+        print(f"Failed to load dynamic agent tools: {e}", file=sys.stderr)
 
-_register_persona_tools()
+_register_agent_tools()
 
 # ── Entry ──────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":

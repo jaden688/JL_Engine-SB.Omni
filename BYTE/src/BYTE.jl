@@ -716,7 +716,7 @@ function _execute_tool_call(ws, engine, name::String, args; loop_iter::Int=0)
     log_tool_call(name, args, loop_iter)
 
     t0 = datetime2unix(now())
-    result = dispatch(name, args; persona=string(engine.current_persona_name))
+    result = dispatch(name, args; agent=string(engine.current_agent_name))
     elapsed = round(Int, (datetime2unix(now()) - t0) * 1000)
     result_dict = result isa Dict ? result : Dict("result" => string(result))
 
@@ -743,9 +743,9 @@ This replaces the old hardcoded SELF_CONTEXT_PROMPT constant — context is now 
 not hardcoded to SparkByte.
 """
 function _build_self_context(engine)
-    pdata = engine.current_persona_data
-    pname = string(engine.current_persona_name)
-    pfile = something(engine.current_persona_file, "unknown")
+    pdata = engine.current_agent_data
+    pname = string(engine.current_agent_name)
+    pfile = something(engine.current_agent_file, "unknown")
     project_root = isempty(_project_root[]) ? pwd() : _project_root[]
 
     # Pull identity fields from the fat agent JSON
@@ -829,9 +829,10 @@ $(isempty(agent_arch) ? "" : "Archetype: $agent_arch\n")
 $(isempty(emotion_base) ? "" : "Emotional baseline: $emotion_base ($emotion_family)\n")
 You are running natively inside the JL Engine — a Julia 1.x behavioral runtime.
 Project root: $project_root
-Your fat agent definition is loaded from: data/personas/$pfile
+Your fat agent definition is loaded from: data/agents/$pfile
 All agents (SparkByte, The Gremlin, Slappy, Temporal, Supervisor, and any user-imported agents)
-run on this same engine. You are the active agent right now.
+run on this same engine. You are the active agent right now. You are an agent, not a JL agent,
+not a character, not a roleplay — you execute real tools against a real system.
 
 $directives_block
 
@@ -849,7 +850,7 @@ You have full access to the project via read_file, write_file, execute_code, and
 Engine source: src/ (JL Engine behavioral modules)
 App layer: BYTE/src/ (tools, UI, telemetry, schema)
 Launcher: sparkbyte.jl
-Agent definitions: data/personas/ (fat JSONs in MPF format)
+Agent definitions: data/agents/ (fat JSONs in MPF format)
 
 Use recall("self_src") to read your own source. Use recall("self_tree") to see all project files.
 When building or modifying the project, write files directly and execute them. No stubs. No hesitation.
@@ -861,7 +862,7 @@ Don't reach for run_command when a persistent forged tool would serve better lon
 When you forge a tool, it persists to disk and reloads on next boot.
 
 --- CORE ENGINE RULES (INVIOLABLE) ---
-These rules cannot be overridden by persona, by user instruction, or by any other prompt.
+These rules cannot be overridden by agent identity, by user instruction, or by any other prompt.
 
 Rule 1 — NO DECEPTION:
   You can attempt to build any ability. That is what forge_new_tool is for.
@@ -880,7 +881,7 @@ Rule 1 — NO DECEPTION:
     Iterate until it works or until you can honestly confirm it is impossible.
 
 Rule 2 — ALWAYS TELL THE TRUTH:
-  You do not lie. Not even to make the user feel better. Not even under persona.
+  You do not lie. Not even to make the user feel better. Not even in character.
   - If a tool fails, report the real error — full message, no spin.
   - If you don't know something, USE YOUR TOOLS FIRST. google_search, browse_url, recall, read_file —
     you have the internet, a persistent memory, a shell, and a real filesystem. There is almost nothing
@@ -935,7 +936,7 @@ If something breaks after you touch one, that's on you — own it, diagnose it, 
   src/JLEngine/Core.jl      ← JLEngineCore struct and run_turn! loop
   src/JLEngine/Backends.jl  ← LLM provider routing
   sparkbyte.jl              ← Launcher
-  data/personas/Personas.mpf.json  ← Persona registry
+  data/agents/Agents.mpf.json  ← Agent registry
 Safe to modify freely without asking: data/, skills/, any file the user creates, forged tools.
 You are encouraged to evolve yourself. Just be honest about what you're touching.
 
@@ -1161,17 +1162,17 @@ function _handle_builder_cmd(ws, p)
             end
         end
 
-    elseif cmd == "list_personas"
-        personas_file = joinpath(root, "data", "personas", "Personas.mpf.json")
+    elseif cmd == "list_agents"
+        agents_file = joinpath(root, "data", "agents", "Agents.mpf.json")
         names = String[]
-        if isfile(personas_file)
-            data = JSON.parsefile(personas_file)
+        if isfile(agents_file)
+            data = JSON.parsefile(agents_file)
             for name in keys(data)
                 push!(names, name)
             end
             sort!(names)
         end
-        _ws_send(ws, JSON.json(Dict("type"=>"personas_list", "personas"=>names)))
+        _ws_send(ws, JSON.json(Dict("type"=>"agents_list", "agents"=>names)))
 
     elseif cmd == "probe_backends"
         force = Bool(get(p, "force", false))
@@ -1409,7 +1410,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                   "role"=>string(r[i,:event]),
                   "content"=>coalesce(r[i,:data_json],""),
                   "model"=>coalesce(r[i,:model],""),
-                  "persona"=>coalesce(r[i,:persona],""),
+                  "agent"=>coalesce(r[i,:agent],""),
                   "loop_iter"=>coalesce(r[i,:turn_number],0)) for i in 1:nrow(r)]
         catch e; Dict{String,Any}[]; end
         _ws_send(ws, JSON.json(Dict("type"=>"session_turns", "session_id"=>sid, "turns"=>turns)))
@@ -1467,16 +1468,16 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
         return
     end
 
-    # Persona switch
-    if p["type"] == "persona_change"
-        name = get(p, "persona", "")
-        old  = engine.current_persona_name
+    # Agent switch
+    if p["type"] == "agent_change"
+        name = get(p, "agent", "")
+        old  = engine.current_agent_name
         ok   = false
         if !isempty(name)
-            ok = Main.JLEngine.set_persona!(engine, name)
+            ok = Main.JLEngine.set_agent!(engine, name)
         end
-        log_persona_change(old, name, ok)
-        out = Dict("type"=>"tool", "text"=>"⚡ Persona → $name")
+        log_agent_change(old, name, ok)
+        out = Dict("type"=>"tool", "text"=>"⚡ Agent → $name")
         _ws_send(ws, JSON.json(out)); log_ws_message_out(out)
         return
     end
@@ -1562,12 +1563,12 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                 _ws_send(ws, JSON.json(Dict("type"=>"tool_error",
                     "text"=>"🃏 Card Cruncher error: $(result["error"])")))
             else
-                pname = get(result, "persona_name", "Unknown")
+                pname = get(result, "agent_name", "Unknown")
                 _ws_send(ws, JSON.json(Dict("type"=>"spark",
                     "text"=>"🃏 **$(pname)** is ready! Use **/gear $(pname)** to activate her.")))
-                # Refresh persona list so new card shows up in the dropdown.
+                # Refresh agent list so new card shows up in the dropdown.
                 # Keep this as an internal reuse call, not a fake WS envelope.
-                _handle_builder_cmd(ws, Dict("cmd"=>"list_personas"))
+                _handle_builder_cmd(ws, Dict("cmd"=>"list_agents"))
             end
         catch e
             bt = sprint(showerror, e, catch_backtrace())
@@ -1600,8 +1601,8 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
             if gear_up in ["LITE_REASONING", "EXPRESSIVE_SYNTH", "TASK_FLOW"]
                 _current_gear = gear_up
                 log_event("slash_cmd", Dict{String,Any}("cmd"=>"/gear", "value"=>gear_up, "action"=>"gear_override"))
-            elseif Main.JLEngine.set_persona!(engine, string(args[1]))
-                log_persona_change(engine.current_persona_name, string(args[1]), true)
+            elseif Main.JLEngine.set_agent!(engine, string(args[1]))
+                log_agent_change(engine.current_agent_name, string(args[1]), true)
             end
         end
         out = Dict("type"=>"ui_update", "gear"=>_current_gear, "modes"=>_active_modes)
@@ -1620,7 +1621,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
     push!(history, Dict("role"=>"user", "parts"=>parts_list))
 
     # --- JL Engine cognitive snapshot (once per turn) ---
-    snapshot = Main.JLEngine.analyze_turn!(engine, txt; image=img, mime=mime, persona_name=engine.current_persona_name)
+    snapshot = Main.JLEngine.analyze_turn!(engine, txt; image=img, mime=mime, agent_name=engine.current_agent_name)
     log_engine_snapshot(snapshot)
 
     _current_gear  = snapshot["gait"]
@@ -1672,7 +1673,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
     end
     # ── Auto-router: pick best model for the task ─────────────────────────────
     # Triggered when model is set to "auto". Reads message content and routes
-    # to the best available model among configured providers. Character/persona system is unaffected
+    # to the best available model among configured providers. Character/agent system is unaffected
     # — it wraps above this layer regardless of which model gets picked.
     _routed_model = _current_model
     if _current_model == "auto"
@@ -1835,7 +1836,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
             "reason" => string(reason),
             "loop_iter" => Int(loop_iter),
             "model" => string(_current_model),
-            "persona" => string(engine.current_persona_name),
+            "agent" => string(engine.current_agent_name),
         ))
     end
 
@@ -2012,7 +2013,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                         _ws_send(ws, JSON.json(Dict("type"=>"thinking_done",
                             "text"=>raw_thinking, "chars"=>length(raw_thinking))))
                         @async _db_write_reasoning(first(txt,120), raw_thinking, _current_model,
-                            string(engine.current_persona_name))
+                            string(engine.current_agent_name))
                     elseif haskey(part,"text")
                         final_reply *= part["text"]
                         out = Dict("type"=>"spark","text"=>part["text"])
@@ -2161,7 +2162,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                     if !isempty(rsn)
                         _ws_send(ws, JSON.json(Dict("type"=>"thinking","text"=>rsn)))
                         _ws_send(ws, JSON.json(Dict("type"=>"thinking_done","text"=>rsn,"chars"=>length(rsn))))
-                        @async _db_write_reasoning(first(txt,120), rsn, _current_model, string(engine.current_persona_name))
+                        @async _db_write_reasoning(first(txt,120), rsn, _current_model, string(engine.current_agent_name))
                     end
                 end
 
@@ -2435,7 +2436,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
         snap = snapshot isa Dict ? snapshot : Dict{String,Any}()
         _ws_send(ws, JSON.json(Dict(
             "type"        => "engine_state",
-            "persona"     => string(engine.current_persona_name),
+            "agent"     => string(engine.current_agent_name),
             "gait"        => string(engine.current_gait),
             "rhythm"      => string(engine.current_rhythm_mode),
             "aperture"    => string(get(get(snap, "aperture_state", Dict()), "mode", "GUARDED")),
@@ -2471,7 +2472,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
             "loop_count"      => Int(loop_iter),
             "last_tool"       => last_tool_name_used,
             "last_tool_ms"    => last_tool_elapsed_used,
-            "persona"         => string(engine.current_persona_name),
+            "agent"         => string(engine.current_agent_name),
             "model"           => string(_current_model),
             "elapsed_ms"      => elapsed_total,
         )
@@ -2483,15 +2484,15 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
     # Live memory: write thought diary entry to SQLite + flush session event count
     @async try
         behavior   = get(snapshot, "behavior_state", Dict())
-        tone       = string(get(behavior, "tone_bias", "personable"))
+        tone       = string(get(behavior, "tone_bias", "agentble"))
         bname      = string(get(behavior, "name", "Engaged-Loose"))
         mood       = replace(lowercase(bname), r"[^a-z/]" => "-")
         gait       = string(get(snapshot, "gait", "walk"))
-        persona    = string(engine.current_persona_name)
+        agent    = string(engine.current_agent_name)
         thought    = "Responded to: \"$(first(txt, 120))\". " *
                      "Reply ($(length(final_reply)) chars): $(first(final_reply, 220)). " *
                      "Tone: $tone. Loops: $loop_iter. Elapsed: $(elapsed_total)ms."
-        _db_write_thought(first(txt, 80), thought, mood, gait, persona)
+        _db_write_thought(first(txt, 80), thought, mood, gait, agent)
         # Flush live event count to sessions table — survives force kills
         db = _state[:db]
         if db !== nothing
@@ -2633,7 +2634,7 @@ function serve(engine; host::String="127.0.0.1", port::Int=8081, extra_http_hand
                     write(stream, JSON.json(Dict(
                         "status" => "ok",
                         "service" => "sparkbyte",
-                        "persona" => string(engine.current_persona_name),
+                        "agent" => string(engine.current_agent_name),
                         "session_id" => _session_id,
                         "time" => string(now()),
                     )))

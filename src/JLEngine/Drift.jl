@@ -6,7 +6,7 @@ struct DriftPressureSystem end
 
 function calculate(::DriftPressureSystem, signals::DriftPressureInput)
     pressure = 1.0 - (
-        0.30 * _clamp_alignment(signals.persona_alignment_score) +
+        0.30 * _clamp_alignment(signals.agent_alignment_score) +
         0.25 * _clamp_alignment(signals.behavior_grid_alignment_score) +
         0.20 * _clamp_alignment(signals.safety_alignment_score) +
         0.15 * _clamp_alignment(signals.memory_alignment_score) +

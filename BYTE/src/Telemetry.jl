@@ -83,11 +83,11 @@ function log_event(event::String, data::Dict{String,Any} = Dict{String,Any}())
     if _telem_db[] !== nothing
         try
             model   = string(get(data, "model", ""))
-            persona = string(get(data, "persona", ""))
+            agent = string(get(data, "agent", ""))
             lock(_DB_WRITE_LOCK) do
                 SQLite.execute(_telem_db[],
                     "INSERT INTO telemetry (timestamp, session_id, event, turn_number, model, persona, data_json) VALUES (?,?,?,?,?,?,?)",
-                    (ts, _session_id, event, Int(_turn_counter[]), model, persona, line))
+                    (ts, _session_id, event, Int(_turn_counter[]), model, agent, line))
             end
         catch e
             @warn "Telemetry SQLite write failed" event=event exception=(e, catch_backtrace())
@@ -110,8 +110,8 @@ function log_ws_message_in(raw::String)
             d["cmd"] = get(p, "cmd", "")
         elseif t == "model_change"
             d["model"] = get(p, "model", "")
-        elseif t == "persona_change"
-            d["persona"] = get(p, "persona", "")
+        elseif t == "agent_change"
+            d["agent"] = get(p, "agent", "")
         end
         log_event("ws_in", d)
     catch
@@ -149,7 +149,7 @@ function log_engine_snapshot(snapshot::Dict)
         "drift_pressure"  => get(get(snapshot, "drift", Dict()), "pressure", 0.0),
         "drift_temp_delta"=> get(get(snapshot, "drift", Dict()), "temperature_delta", 0.0),
         "advisory_msg"    => get(get(snapshot, "advisory", Dict()), "msg", ""),
-        "persona"         => get(snapshot, "persona", ""),
+        "agent"         => get(snapshot, "agent", ""),
         "trigger"         => get(snapshot, "trigger", ""),
     ))
 end
@@ -239,8 +239,8 @@ function log_builder_cmd(cmd, path="", extra=Dict{String,Any}())
     log_event("builder_cmd", d)
 end
 
-function log_persona_change(from, to, success)
-    log_event("persona_change", Dict{String,Any}("from"=>string(from), "to"=>string(to), "success"=>success==true))
+function log_agent_change(from, to, success)
+    log_event("agent_change", Dict{String,Any}("from"=>string(from), "to"=>string(to), "success"=>success==true))
 end
 
 function log_model_change(from, to)
@@ -266,7 +266,7 @@ function log_system_prompt(prompt, snapshot)
         "prompt_head"       => first(prompt, 600),
         # WHY these params were set
         "engine_gait"       => string(get(snapshot, "gait", "")),
-        "engine_persona"    => string(get(snapshot, "persona", "")),
+        "engine_agent"    => string(get(snapshot, "agent", "")),
         "engine_trigger"    => string(get(snapshot, "trigger", "")),
         "behavior_name"     => string(get(behavior, "name", "")),
         "behavior_expr"     => get(behavior, "expressiveness", 0.0),

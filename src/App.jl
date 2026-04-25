@@ -490,8 +490,8 @@ function _build_engine(root::String)
         master_file          = "JLframe_Engine_Framework.json",
         behavior_states_file = "behavior_states.json",
         mpf_registry_file    = "agents/Agents.mpf.json",
-        personas_dir         = "agents",
-        default_persona_name = "SparkByte",
+        agents_dir         = "agents",
+        default_agent_name = "SparkByte",
     ))
 end
 

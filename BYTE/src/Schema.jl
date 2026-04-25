@@ -143,12 +143,12 @@ const TOOLS_SCHEMA = [Dict("function_declarations" => [
     ),
     Dict(
         "name" => "recall",
-        "description" => "Query the agent's SQLite memory and engine state. Use 'mode' to target specific tables: memory (default, full-text search), behavior_states (all 20 JL Engine behavioral grid cells), personas (all loaded fat agents), knowledge (tool schemas, engine capabilities, framework sections — use query=domain name like 'engine_capabilities' or 'tool_schema'), tools (forged + builtin tool registry), telemetry (event log), thoughts (reasoning traces + diary).",
+        "description" => "Query the agent's SQLite memory and engine state. Use 'mode' to target specific tables: memory (default, full-text search), behavior_states (all 20 JL Engine behavioral grid cells), agents (all loaded fat agents), knowledge (tool schemas, engine capabilities, framework sections — use query=domain name like 'engine_capabilities' or 'tool_schema'), tools (forged + builtin tool registry), telemetry (event log), thoughts (reasoning traces + diary).",
         "parameters" => Dict(
             "type" => "OBJECT",
             "properties" => Dict(
-                "query" => Dict("type" => "STRING", "description" => "Search string or domain name (e.g. 'behavior_states', 'engine_capabilities', persona name, tool name, event type)"),
-                "mode"  => Dict("type" => "STRING", "description" => "Table to query: memory | behavior_states | personas | knowledge | tools | telemetry | thoughts", "enum" => ["memory","behavior_states","personas","knowledge","tools","telemetry","thoughts"])
+                "query" => Dict("type" => "STRING", "description" => "Search string or domain name (e.g. 'behavior_states', 'engine_capabilities', agent name, tool name, event type)"),
+                "mode"  => Dict("type" => "STRING", "description" => "Table to query: memory | behavior_states | agents | knowledge | tools | telemetry | thoughts", "enum" => ["memory","behavior_states","agents","knowledge","tools","telemetry","thoughts"])
             ),
             "required" => ["query"]
         )
@@ -279,12 +279,12 @@ const TOOLS_SCHEMA = [Dict("function_declarations" => [
     ),
     Dict(
         "name" => "card_cruncher",
-        "description" => "Convert a SillyTavern or CharacterTavern character card (.png or .json) into a JLEngine _Full.json persona file. Extracts name, description, personality, scenario, tags, and boot prompt from the card and maps them to the full JLEngine persona schema. The persona is written to data/personas/<Name>_Full.json and can be activated immediately with /gear <Name>. Drag-and-drop cards into the chat UI to trigger this automatically.",
+        "description" => "Convert a SillyTavern or CharacterTavern character card (.png or .json) into a JLEngine _Full.json agent file. Extracts name, description, agentlity, scenario, tags, and boot prompt from the card and maps them to the full JLEngine agent schema. The agent is written to data/agents/<Name>_Full.json and can be activated immediately with /gear <Name>. Drag-and-drop cards into the chat UI to trigger this automatically.",
         "parameters" => Dict(
             "type" => "OBJECT",
             "properties" => Dict(
                 "card_path"   => Dict("type" => "STRING", "description" => "Path to the .png or .json SillyTavern character card file"),
-                "out_path"    => Dict("type" => "STRING", "description" => "Optional output path override. Default: data/personas/<Name>_Full.json"),
+                "out_path"    => Dict("type" => "STRING", "description" => "Optional output path override. Default: data/agents/<Name>_Full.json"),
                 "dry_run"     => Dict("type" => "BOOLEAN", "description" => "If true, print the result without writing to disk. Default: false"),
                 "engine_root" => Dict("type" => "STRING", "description" => "Engine root directory override. Default: current project root")
             ),
