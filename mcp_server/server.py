@@ -89,21 +89,34 @@ def search_julian_quarry(query: str, limit: int = 10) -> str:
 # ── SparkByte WebSocket messenger ─────────────────────────────────────────────
 _SB_WS = os.environ.get("SPARKBYTE_WS", "ws://127.0.0.1:8081")
 
-async def _ws_ask(prompt: str, timeout: float = 30.0) -> str:
+async def _ws_ask(prompt: str, timeout: float = 60.0) -> str:
     """Async WS call to SparkByte — must be awaited inside an async context."""
+    # SparkByte WS protocol — message types observed:
+    #   "generation_started" — engine starting, ignore
+    #   "ui_update"          — gear/mode info, ignore
+    #   "tool"               — tool call status, ignore
+    #   "engine_state"       — perf snapshot, ignore
+    #   "telemetry_update"   — metrics, ignore
+    #   "spark"              — actual reply text (field: "text")  ← this is what we want
+    #   "error"              — engine error (field: "text")
+    REPLY_TYPES  = {"spark"}
+    ERROR_TYPES  = {"error"}
+    IGNORE_TYPES = {"generation_started", "ui_update", "tool", "engine_state", "telemetry_update"}
     try:
         async with websockets.connect(_SB_WS, open_timeout=5) as ws:
-            payload = json.dumps({"type": "chat", "message": prompt, "id": str(uuid.uuid4())})
+            payload = json.dumps({"type": "chat", "text": prompt, "id": str(uuid.uuid4())})
             await ws.send(payload)
             deadline = asyncio.get_event_loop().time() + timeout
             while asyncio.get_event_loop().time() < deadline:
                 try:
                     raw = await asyncio.wait_for(ws.recv(), timeout=5.0)
                     msg = json.loads(raw)
-                    if msg.get("type") in ("reply", "message", "chat_reply", "assistant"):
-                        return msg.get("content") or msg.get("message") or str(msg)
-                    if msg.get("role") == "assistant":
-                        return msg.get("content", str(msg))
+                    mtype = msg.get("type", "")
+                    if mtype in REPLY_TYPES:
+                        return msg.get("text") or msg.get("content") or msg.get("message") or str(msg)
+                    if mtype in ERROR_TYPES:
+                        return f"[SparkByte error: {msg.get('text', str(msg))}]"
+                    # keep looping on known noise types
                 except asyncio.TimeoutError:
                     continue
             return "[SparkByte did not reply within timeout]"
