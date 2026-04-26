@@ -1198,10 +1198,11 @@ function _handle_builder_cmd(ws, p)
 
     elseif cmd == "get_settings"
         env_keys = Dict(
-            "GEMINI_API_KEY"   => "gemini",
-            "XAI_API_KEY"      => "xai",
-            "OPENAI_API_KEY"   => "openai",
-            "CEREBRAS_API_KEY" => "cerebras",
+            "GEMINI_API_KEY"     => "gemini",
+            "XAI_API_KEY"        => "xai",
+            "OPENAI_API_KEY"     => "openai",
+            "CEREBRAS_API_KEY"   => "cerebras",
+            "OPENAI_TTS_API_KEY" => "openai_tts",
         )
         statuses = Dict{String,Any}()
         for (env_name, label) in env_keys
@@ -1219,17 +1220,18 @@ function _handle_builder_cmd(ws, p)
                 "enabled" => _tts_enabled(),
                 "voice" => _tts_voice(),
                 "model" => _tts_model(),
-                "ready" => _tts_enabled() && !isempty(strip(get(ENV, "OPENAI_API_KEY", ""))),
+                "ready" => _tts_enabled() && !isempty(strip(get(ENV, "OPENAI_TTS_API_KEY", get(ENV, "OPENAI_API_KEY", "")))),
             ),
         )))
 
     elseif cmd == "save_settings"
         # Collect all keys being saved this call
         key_map = Dict(
-            "GEMINI_API_KEY"   => get(p, "api_key", ""),
-            "XAI_API_KEY"      => get(p, "xai_api_key", ""),
-            "OPENAI_API_KEY"   => get(p, "openai_api_key", ""),
-            "CEREBRAS_API_KEY" => get(p, "cerebras_api_key", ""),
+            "GEMINI_API_KEY"     => get(p, "api_key", ""),
+            "XAI_API_KEY"        => get(p, "xai_api_key", ""),
+            "OPENAI_API_KEY"     => get(p, "openai_api_key", ""),
+            "CEREBRAS_API_KEY"   => get(p, "cerebras_api_key", ""),
+            "OPENAI_TTS_API_KEY" => get(p, "openai_tts_api_key", ""),
         )
         tts_map = Dict(
             "SPARKBYTE_TTS_ENABLED" => haskey(p, "tts_enabled") ? (Bool(get(p, "tts_enabled", false)) ? "1" : "0") : "",
@@ -1272,7 +1274,8 @@ function _handle_builder_cmd(ws, p)
         end
         # Always send back full status so badges update
         env_keys = Dict("GEMINI_API_KEY"=>"gemini","XAI_API_KEY"=>"xai",
-                        "OPENAI_API_KEY"=>"openai","CEREBRAS_API_KEY"=>"cerebras")
+                        "OPENAI_API_KEY"=>"openai","CEREBRAS_API_KEY"=>"cerebras",
+                        "OPENAI_TTS_API_KEY"=>"openai_tts")
         statuses = Dict{String,Any}()
         for (env_name, label) in env_keys
             v = get(ENV, env_name, "")
@@ -1287,7 +1290,7 @@ function _handle_builder_cmd(ws, p)
                 "enabled" => _tts_enabled(),
                 "voice" => _tts_voice(),
                 "model" => _tts_model(),
-                "ready" => _tts_enabled() && !isempty(strip(get(ENV, "OPENAI_API_KEY", ""))),
+                "ready" => _tts_enabled() && !isempty(strip(get(ENV, "OPENAI_TTS_API_KEY", get(ENV, "OPENAI_API_KEY", "")))),
             ),
         )))
         probe = _get_backend_probe(force=true)
@@ -2344,7 +2347,19 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
             _abort_generation_if_requested!(ws) && break
 
             if !haskey(data,"choices") || isempty(data["choices"])
-                err_msg = "ERROR: No response from $provider. $(get(data,"error",Dict{String,Any}()))"
+                # Detect Azure Content Safety blocks (innererror.code == "ResponsibleAIPolicyViolation")
+                api_err   = get(data, "error", Dict{String,Any}())
+                inner     = get(api_err isa AbstractDict ? api_err : Dict(), "innererror", Dict())
+                cf_code   = get(inner, "code", "")
+                cf_filter = get(api_err isa AbstractDict ? api_err : Dict(), "code", "")
+                is_content_filter = cf_code == "ResponsibleAIPolicyViolation" ||
+                                    cf_filter == "content_filter" ||
+                                    occursin("content_filter", get(api_err isa AbstractDict ? api_err : Dict(), "message", ""))
+                err_msg = if is_content_filter
+                    "🛡️ Azure Content Safety blocked this message. Fix: Azure AI Foundry → Safety + security → Content filters → edit your policy → raise thresholds to Medium/High → re-assign to your deployment."
+                else
+                    "ERROR: No response from $provider. $api_err"
+                end
                 _ws_send(ws, JSON.json(Dict("type"=>"spark","text"=>err_msg)))
                 log_api_response(_current_model, resp.status, length(resp.body), loop_iter; error=err_msg)
                 break
