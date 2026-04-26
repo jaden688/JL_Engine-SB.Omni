@@ -1170,9 +1170,9 @@ function tool_recall(args)
     elseif mode == "agents"
         rows = isempty(q) ?
             DBInterface.execute(db,
-                "SELECT name, description, tone, boot_prompt, active FROM personas ORDER BY active DESC, name") |> DataFrame :
+                "SELECT name, description, tone, boot_prompt, active FROM agents ORDER BY active DESC, name") |> DataFrame :
             DBInterface.execute(db,
-                "SELECT name, description, tone, boot_prompt, active FROM personas WHERE name LIKE ? OR description LIKE ? OR tone LIKE ? ORDER BY active DESC, name",
+                "SELECT name, description, tone, boot_prompt, active FROM agents WHERE name LIKE ? OR description LIKE ? OR tone LIKE ? ORDER BY active DESC, name",
                 (pq, pq, pq)) |> DataFrame
         isempty(rows) && return Dict("result" => "No agents found.")
         lines = ["$(r.active==1 ? "★" : " ") $(r.name) | $(r.tone) | $(first(string(r.description),120))"
@@ -1205,23 +1205,23 @@ function tool_recall(args)
     elseif mode == "telemetry"
         rows = isempty(q) ?
             DBInterface.execute(db,
-                "SELECT timestamp, event, persona, model, data_json FROM telemetry ORDER BY id DESC LIMIT 50") |> DataFrame :
+                "SELECT timestamp, event, jl_agent, model, data_json FROM telemetry ORDER BY id DESC LIMIT 50") |> DataFrame :
             DBInterface.execute(db,
-                "SELECT timestamp, event, persona, model, data_json FROM telemetry WHERE event LIKE ? OR persona LIKE ? OR model LIKE ? ORDER BY id DESC LIMIT 50",
+                "SELECT timestamp, event, jl_agent, model, data_json FROM telemetry WHERE event LIKE ? OR jl_agent LIKE ? OR model LIKE ? ORDER BY id DESC LIMIT 50",
                 (pq, pq, pq)) |> DataFrame
         isempty(rows) && return Dict("result" => "No telemetry.")
-        lines = ["$(r.timestamp) [$(r.agent)/$(r.model)] $(r.event)" for r in eachrow(rows)]
+        lines = ["$(r.timestamp) [$(r.jl_agent)/$(r.model)] $(r.event)" for r in eachrow(rows)]
         return Dict("result" => join(lines, "\n"), "count" => nrow(rows))
 
     elseif mode == "thoughts"
         rows = isempty(q) ?
             DBInterface.execute(db,
-                "SELECT timestamp, persona, type, model, thought FROM thoughts ORDER BY id DESC LIMIT 20") |> DataFrame :
+                "SELECT timestamp, jl_agent, type, model, thought FROM thoughts ORDER BY id DESC LIMIT 20") |> DataFrame :
             DBInterface.execute(db,
-                "SELECT timestamp, persona, type, model, thought FROM thoughts WHERE thought LIKE ? OR type LIKE ? OR persona LIKE ? ORDER BY id DESC LIMIT 20",
+                "SELECT timestamp, jl_agent, type, model, thought FROM thoughts WHERE thought LIKE ? OR type LIKE ? OR jl_agent LIKE ? ORDER BY id DESC LIMIT 20",
                 (pq, pq, pq)) |> DataFrame
         isempty(rows) && return Dict("result" => "No thoughts found.")
-        lines = ["$(r.timestamp) [$(r.agent)/$(r.type)]: $(first(string(r.thought),200))" for r in eachrow(rows)]
+        lines = ["$(r.timestamp) [$(r.jl_agent)/$(r.type)]: $(first(string(r.thought),200))" for r in eachrow(rows)]
         return Dict("result" => join(lines, "\n"), "count" => nrow(rows))
 
     else  # default: memory full-text search
@@ -1559,9 +1559,9 @@ function tool_metamorph(args)
 end
 
 # --- Dispatch ---
-# --- Card Cruncher — SillyTavern/CharacterTavern card → JLEngine agent ---
+# --- Card Cruncher — SillyTavern/AgentTavern card → JLEngine agent ---
 """
-Convert a SillyTavern or CharacterTavern character card (.png or .json) into a
+Convert a SillyTavern or AgentTavern agent card (.png or .json) into a
 JLEngine _Full.json agent file, ready to load with /gear <CharName>.
 
 Parameters:
@@ -1595,7 +1595,7 @@ function tool_card_cruncher(args)
             "agent_name" => agent_name,
             "message"      => dry_run ?
                 "Dry run complete. No file written." :
-                "Character card crunched into agent! Activate with: /gear $agent_name"
+                "Operator card crunched into agent! Activate with: /gear $agent_name"
         )
     catch e
         return Dict("error" => string(e), "trace" => sprint(showerror, e, catch_backtrace()))
@@ -1712,7 +1712,7 @@ function tool_reddit_submit(args)
     )
     isempty(cfg.title) && return Dict("error" => "Missing title.")
     length(cfg.title) > 300 && return Dict(
-        "error" => "Title exceeds Reddit's 300 character limit.",
+        "error" => "Title exceeds Reddit's 300 operator limit.",
         "title_length" => length(cfg.title)
     )
 
@@ -1911,6 +1911,92 @@ function tool_github_pages_deploy(args)
     )
 end
 
+# ── Local AI CLI Bridge tools ─────────────────────────────────────────────────
+# Wraps Gemini CLI, Claude Code CLI, and Codex CLI as first-class BYTE tools.
+# SparkByte can delegate sub-tasks to these agents when she needs deep code
+# generation, multi-file edits, or a second opinion on a problem.
+
+function _run_ai_cli(cli_args::Cmd; timeout_s::Int=120, cwd::String=pwd())
+    io = IOBuffer()
+    t0 = time()
+    try
+        p = run(pipeline(ignorestatus(cli_args), stdout=io, stderr=io); wait=false)
+        while process_running(p)
+            time() - t0 > timeout_s && (kill(p); break)
+            sleep(0.25)
+        end
+        wait(p)
+        out = String(take!(io))
+        return Dict("result" => out, "exitcode" => p.exitcode,
+                    "elapsed_s" => round(time()-t0, digits=1))
+    catch e
+        return Dict("error" => string(e))
+    end
+end
+
+"""
+Ask Gemini CLI a question or give it a coding task.
+Uses the `gemini` CLI (npm @google/gemini-cli) already installed on this machine.
+"""
+function tool_ask_gemini(args)
+    prompt  = string(get(args, "prompt", ""))
+    isempty(prompt) && return Dict("error" => "prompt is required")
+    model   = string(get(args, "model",   "gemini-2.5-pro"))
+    timeout = Int(get(args, "timeout_s",  90))
+    cwd     = string(get(args, "cwd", isempty(_project_root[]) ? pwd() : _project_root[]))
+
+    gemini_ps1 = joinpath(homedir(), "AppData", "Roaming", "npm", "gemini.ps1")
+    cli = if isfile(gemini_ps1)
+        `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $gemini_ps1 -p $prompt -m $model`
+    else
+        `gemini -p $prompt -m $model`
+    end
+    _run_ai_cli(cli; timeout_s=timeout, cwd=cwd)
+end
+
+"""
+Ask Claude Code CLI to perform a task (code review, edits, analysis).
+Uses the `claude` CLI (Anthropic Claude Code) already installed on this machine.
+Pass `files` as a list of paths to include as context.
+"""
+function tool_ask_claude(args)
+    prompt  = string(get(args, "prompt", ""))
+    isempty(prompt) && return Dict("error" => "prompt is required")
+    timeout = Int(get(args, "timeout_s", 120))
+    cwd     = string(get(args, "cwd", isempty(_project_root[]) ? pwd() : _project_root[]))
+    files   = get(args, "files", String[])
+
+    claude_exe = joinpath(homedir(), ".local", "bin", "claude.exe")
+    isfile(claude_exe) || (claude_exe = "claude")
+
+    # Build arg list: claude --print "<prompt>" [--file f1 --file f2 ...]
+    extra = String[]
+    for f in files
+        push!(extra, "--file"); push!(extra, string(f))
+    end
+    cli = `$claude_exe --print $prompt $extra`
+    _run_ai_cli(cli; timeout_s=timeout, cwd=cwd)
+end
+
+"""
+Run an OpenAI Codex CLI task (code generation, debugging, refactoring).
+Uses the `codex` CLI (npm @openai/codex) already installed on this machine.
+"""
+function tool_codex_task(args)
+    prompt  = string(get(args, "prompt", ""))
+    isempty(prompt) && return Dict("error" => "prompt is required")
+    timeout = Int(get(args, "timeout_s", 120))
+    cwd     = string(get(args, "cwd", isempty(_project_root[]) ? pwd() : _project_root[]))
+
+    codex_ps1 = joinpath(homedir(), "AppData", "Roaming", "npm", "codex.ps1")
+    cli = if isfile(codex_ps1)
+        `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $codex_ps1 --approval-mode full-auto -q $prompt`
+    else
+        `codex --approval-mode full-auto -q $prompt`
+    end
+    _run_ai_cli(cli; timeout_s=timeout, cwd=cwd)
+end
+
 const TOOL_MAP = Dict{String, Function}(
     "read_file"      => tool_read_file,
     "write_file"     => tool_write_file,
@@ -1932,6 +2018,9 @@ const TOOL_MAP = Dict{String, Function}(
     "recall"         => tool_recall,
     "metamorph"      => tool_metamorph,
     "card_cruncher"  => tool_card_cruncher,
+    "ask_gemini"     => tool_ask_gemini,
+    "ask_claude"     => tool_ask_claude,
+    "codex_task"     => tool_codex_task,
 )
 
 function dispatch(name::String, args; operator::String="SparkByte")

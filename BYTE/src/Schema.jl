@@ -291,4 +291,45 @@ const TOOLS_SCHEMA = [Dict("function_declarations" => [
             "required" => ["card_path"]
         )
     ),
+    Dict(
+        "name" => "ask_gemini",
+        "description" => "Ask Google Gemini CLI a question or give it a coding task. Runs the locally-installed `gemini` CLI (npm @google/gemini-cli v0.39.1). Use this when you want a second AI perspective, need Gemini's code generation, or want to delegate a sub-problem to Gemini without leaving the engine.",
+        "parameters" => Dict(
+            "type" => "OBJECT",
+            "properties" => Dict(
+                "prompt"     => Dict("type" => "STRING", "description" => "The question or task to send to Gemini"),
+                "model"      => Dict("type" => "STRING", "description" => "Gemini model to use. Default: gemini-2.5-pro"),
+                "timeout_s"  => Dict("type" => "INTEGER", "description" => "Max seconds to wait for response. Default: 90"),
+                "cwd"        => Dict("type" => "STRING", "description" => "Working directory for the CLI process. Default: engine root")
+            ),
+            "required" => ["prompt"]
+        )
+    ),
+    Dict(
+        "name" => "ask_claude",
+        "description" => "Ask Anthropic Claude Code CLI to perform a task — code review, edits, analysis, debugging. Runs the locally-installed `claude` CLI (Claude Code v2.1.119). Optionally pass file paths to include as context. Use this for deep multi-file code understanding or when you want Claude's architecture instincts.",
+        "parameters" => Dict(
+            "type" => "OBJECT",
+            "properties" => Dict(
+                "prompt"     => Dict("type" => "STRING", "description" => "The task or question for Claude"),
+                "files"      => Dict("type" => "ARRAY", "description" => "Optional list of file paths to include as context", "items" => Dict("type" => "STRING")),
+                "timeout_s"  => Dict("type" => "INTEGER", "description" => "Max seconds to wait. Default: 120"),
+                "cwd"        => Dict("type" => "STRING", "description" => "Working directory. Default: engine root")
+            ),
+            "required" => ["prompt"]
+        )
+    ),
+    Dict(
+        "name" => "codex_task",
+        "description" => "Run an OpenAI Codex CLI task — code generation, debugging, refactoring, automated edits. Runs the locally-installed `codex` CLI (npm @openai/codex v0.124.0) in full-auto approval mode. Use this when you want Codex to autonomously generate or modify code files.",
+        "parameters" => Dict(
+            "type" => "OBJECT",
+            "properties" => Dict(
+                "prompt"     => Dict("type" => "STRING", "description" => "The coding task to give Codex"),
+                "timeout_s"  => Dict("type" => "INTEGER", "description" => "Max seconds to wait. Default: 120"),
+                "cwd"        => Dict("type" => "STRING", "description" => "Working directory for Codex to operate in. Default: engine root")
+            ),
+            "required" => ["prompt"]
+        )
+    ),
 ])]
