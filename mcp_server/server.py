@@ -89,35 +89,32 @@ def search_julian_quarry(query: str, limit: int = 10) -> str:
 # ── SparkByte WebSocket messenger ─────────────────────────────────────────────
 _SB_WS = os.environ.get("SPARKBYTE_WS", "ws://127.0.0.1:8081")
 
-def _ask_sparkbyte(prompt: str, timeout: float = 30.0) -> str:
-    """Send a message to SparkByte over WebSocket and return her reply."""
-    async def _send():
-        try:
-            async with websockets.connect(_SB_WS, open_timeout=5) as ws:
-                payload = json.dumps({"type": "chat", "message": prompt, "id": str(uuid.uuid4())})
-                await ws.send(payload)
-                deadline = asyncio.get_event_loop().time() + timeout
-                while asyncio.get_event_loop().time() < deadline:
-                    try:
-                        raw = await asyncio.wait_for(ws.recv(), timeout=5.0)
-                        msg = json.loads(raw)
-                        # Accept first assistant/reply message
-                        if msg.get("type") in ("reply", "message", "chat_reply", "assistant"):
-                            return msg.get("content") or msg.get("message") or str(msg)
-                        if msg.get("role") == "assistant":
-                            return msg.get("content", str(msg))
-                    except asyncio.TimeoutError:
-                        continue
-                return "[SparkByte did not reply within timeout]"
-        except Exception as e:
-            return f"[SparkByte unreachable: {e}]"
-    return asyncio.run(_send())
+async def _ws_ask(prompt: str, timeout: float = 30.0) -> str:
+    """Async WS call to SparkByte — must be awaited inside an async context."""
+    try:
+        async with websockets.connect(_SB_WS, open_timeout=5) as ws:
+            payload = json.dumps({"type": "chat", "message": prompt, "id": str(uuid.uuid4())})
+            await ws.send(payload)
+            deadline = asyncio.get_event_loop().time() + timeout
+            while asyncio.get_event_loop().time() < deadline:
+                try:
+                    raw = await asyncio.wait_for(ws.recv(), timeout=5.0)
+                    msg = json.loads(raw)
+                    if msg.get("type") in ("reply", "message", "chat_reply", "assistant"):
+                        return msg.get("content") or msg.get("message") or str(msg)
+                    if msg.get("role") == "assistant":
+                        return msg.get("content", str(msg))
+                except asyncio.TimeoutError:
+                    continue
+            return "[SparkByte did not reply within timeout]"
+    except Exception as e:
+        return f"[SparkByte unreachable: {e}]"
 
 # ── Direct SparkByte tool ──────────────────────────────────────────────────────
 @mcp.tool()
-def ask_sparkbyte(prompt: str) -> str:
+async def ask_sparkbyte(prompt: str) -> str:
     """Send a message directly to SparkByte and get her real reply."""
-    return _ask_sparkbyte(prompt)
+    return await _ws_ask(prompt)
 
 # ── Dynamic Agent Tools ──────────────────────────────────────────────────────
 def _register_agent_tools():
@@ -129,8 +126,8 @@ def _register_agent_tools():
             desc = f"Send a message to the {p_name} agent and get a real reply."[:250]
 
             def make_tool(agent_name):
-                def _delegate_to_agent(prompt: str) -> str:
-                    return _ask_sparkbyte(f"[From external agent, directed to {agent_name}]: {prompt}")
+                async def _delegate_to_agent(prompt: str) -> str:
+                    return await _ws_ask(f"[From external agent, directed to {agent_name}]: {prompt}")
                 _delegate_to_agent.__name__ = safe_name
                 _delegate_to_agent.__doc__ = desc
                 return _delegate_to_agent
