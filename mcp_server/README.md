@@ -62,6 +62,8 @@ python mcp_server/http_server.py
 | `MCP_TRANSPORT` | `stdio` | Set to `sse` or `http` to switch transport |
 | `MCP_PORT` | `8083` | Port for SSE mode |
 | `SPARKBYTE_WS` | `ws://127.0.0.1:8081` | Where the live engine is listening |
+| `SPARKBYTE_WS_TIMEOUT` | `60` | Seconds to wait for a `spark` reply |
+| `MCP_MAX_RESPONSE_BYTES` | `60000` | Cap for `query_memory` / `list_forged_tools_registry` output |
 | `JULIAN_DB` | `JulianMetaMorph/JulianMetaMorph/data/quarry.db` | Path to quarry |
 | `JULIAN_SKILL` | `~/.claude/skills/julian/SKILL.md` | Julian skill markdown |
 
@@ -153,11 +155,22 @@ Internally this round-trips through `ask_sparkbyte` over WS, so the engine must 
 
 ## Known limitations
 
-- `query_memory` has no output truncation — large memory stores can return 100k+ chars and overflow client context. Use specific `tag` / `key` filters.
-- WS reply timeout is 60s; long agent thinks may cut off.
-- `_register_agent_tools` swallows all exceptions — if agent passthroughs are missing, check that `sparkbyte_memory.db` and the `agents` table exist.
+- `query_memory` and `list_forged_tools_registry` cap output at `MCP_MAX_RESPONSE_BYTES` (default 60kB). Capped responses come back as `{truncated: true, preview, hint}` — narrow the query or raise the cap.
+- WS reply timeout is `SPARKBYTE_WS_TIMEOUT` (default 60s); raise it for long agent thinks.
+- If `ask_agent_*` tools are missing, check stderr — `_register_agent_tools` logs the exception (usually a missing DB or schema drift in the `agents` table).
 - DB writes (`write_memory`) are read-write; the rest of the DB tools open the file with `mode=ro`.
 - No auth on SSE/HTTP transports — bind to localhost only or front with a reverse proxy if exposing.
+
+---
+
+## Smoke test
+
+```bash
+python mcp_server/smoke_test.py            # DB tools only
+RUN_WS=1 python mcp_server/smoke_test.py   # also hit live engine
+```
+
+Expects 7/7 (DB) or 9/9 (with WS).
 
 ---
 
