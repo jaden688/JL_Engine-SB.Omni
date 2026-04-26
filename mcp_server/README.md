@@ -1,0 +1,174 @@
+# SparkByte MCP Server
+
+Exposes the JL-Engine / SparkByte runtime to any [Model Context Protocol](https://modelcontextprotocol.io) client (Claude Desktop, Claude Code, Cursor, Zed, ChatGPT custom MCP, VS Code Copilot).
+
+Server name: **`sparkbyte`** (also registered as `JL-SB-Omni` in some configs).
+
+---
+
+## What it gives you
+
+Two integration paths into the engine:
+
+1. **Read-only DB tools** — direct queries against `sparkbyte_memory.db` and the embedded Julian quarry (`quarry.db`). Fast, no engine required.
+2. **Live engine tools** — round-trip to the running SparkByte WebSocket (`ws://127.0.0.1:8081`) for real agent replies and forged-tool execution.
+
+### Tool catalog
+
+| Tool | Path | Description |
+|---|---|---|
+| `get_engine_state` | DB | Latest `turn_snapshots` row |
+| `get_recent_telemetry(limit=20)` | DB | Recent telemetry events |
+| `query_memory(tag="", key="", limit=20)` | DB | Filter memory rows by tag/key |
+| `write_memory(tag, key, content)` | DB | Insert a new memory row |
+| `list_agents` | DB | Registered agents (name, tone, active) |
+| `list_forged_tools` | DB | Forged tools recorded in `tools` table |
+| `list_forged_tools_registry` | FS | Dump `dynamic_tools_registry.json` (Julia runtime tools) |
+| `search_julian_quarry(query, limit=10)` | DB | Full-text-ish scan of the code quarry |
+| `ask_sparkbyte(prompt)` | WS | Direct chat with SparkByte |
+| `ask_agent_<persona>(prompt)` | WS | Auto-generated per agent in DB (slappy, supervisor, the_gremlin, …) |
+| `call_forged_tool(name, args?)` | WS | Invoke a Julia-runtime forged tool by name |
+
+> Agent passthrough tools are registered dynamically at server start from the `agents` table — adding an agent to the DB and restarting the server exposes a new `ask_agent_*` tool automatically.
+
+---
+
+## Install / run
+
+### Requirements
+- Python 3.10+
+- `mcp`, `websockets` (install via the parent project's environment)
+- `sparkbyte_memory.db` at repo root (read-only access is fine)
+- (Optional, for live tools) SparkByte WS server running on `127.0.0.1:8081`
+
+### Run modes
+
+```bash
+# stdio (default — what Claude Desktop / Claude Code use)
+python mcp_server/server.py
+
+# SSE / HTTP (for ChatGPT custom MCP, browser clients)
+python mcp_server/server.py --http
+# → http://127.0.0.1:8083/sse
+
+# Streamable-HTTP (FastMCP default, port 8000)
+python mcp_server/http_server.py
+```
+
+### Environment overrides
+
+| Var | Default | Purpose |
+|---|---|---|
+| `MCP_TRANSPORT` | `stdio` | Set to `sse` or `http` to switch transport |
+| `MCP_PORT` | `8083` | Port for SSE mode |
+| `SPARKBYTE_WS` | `ws://127.0.0.1:8081` | Where the live engine is listening |
+| `JULIAN_DB` | `JulianMetaMorph/JulianMetaMorph/data/quarry.db` | Path to quarry |
+| `JULIAN_SKILL` | `~/.claude/skills/julian/SKILL.md` | Julian skill markdown |
+
+---
+
+## Client setup
+
+### Claude Desktop (`%APPDATA%\Claude\claude_desktop_config.json`)
+
+```json
+{
+  "mcpServers": {
+    "sparkbyte": {
+      "command": "python",
+      "args": [
+        "C:\\Users\\J_lin\\Desktop\\jl-engine-reboot-reboot\\JL_Engine-SB.Omni\\mcp_server\\server.py"
+      ]
+    }
+  }
+}
+```
+
+Restart Claude Desktop to pick up changes.
+
+### Claude Code
+
+Either reuse the Claude Desktop entry above, or add a project-scoped `.mcp.json` at the repo root:
+
+```json
+{
+  "mcpServers": {
+    "sparkbyte": {
+      "command": "python",
+      "args": ["mcp_server/server.py"]
+    }
+  }
+}
+```
+
+### Cursor / Zed / VS Code Copilot
+
+Same shape — point at `python mcp_server/server.py` (stdio).
+
+### ChatGPT custom MCP
+
+Run in SSE mode and give ChatGPT the URL:
+
+```
+python mcp_server/server.py --http
+# → http://127.0.0.1:8083/sse
+```
+
+---
+
+## How forged tools work
+
+SparkByte's runtime forge writes tool **metadata** to `dynamic_tools_registry.json` and the **implementation** to `dynamic_tools.jl` (Julia). These are loaded into the live engine, *not* into the SQLite `tools` table — so `list_forged_tools` (DB) and `list_forged_tools_registry` (filesystem) can show different things.
+
+To invoke one from an MCP client:
+
+```python
+call_forged_tool("coin_flip")
+call_forged_tool("word_count", {"text": "the quick brown fox"})
+```
+
+Internally this round-trips through `ask_sparkbyte` over WS, so the engine must be running.
+
+---
+
+## Architecture
+
+```
+┌──────────────────┐    stdio / sse        ┌────────────────────────┐
+│  MCP client      │◄────────────────────►│  mcp_server/server.py  │
+│  (Claude/Cursor) │                       │  (FastMCP, this file)  │
+└──────────────────┘                       └──────┬─────────┬───────┘
+                                                  │         │
+                                       sqlite ro  │         │ ws://…:8081
+                                                  ▼         ▼
+                                  sparkbyte_memory.db   SparkByte engine
+                                  quarry.db              (Julia + Python)
+```
+
+- DB tools are synchronous, return JSON strings.
+- WS tools are `async`, await `_ws_ask` which filters the SparkByte WS protocol for `spark` (reply) and `error` messages, ignoring noise (`generation_started`, `ui_update`, `tool`, `engine_state`, `telemetry_update`).
+- Agent passthrough tools are generated at import time from the `agents` table — silent failure if the DB is missing.
+
+---
+
+## Known limitations
+
+- `query_memory` has no output truncation — large memory stores can return 100k+ chars and overflow client context. Use specific `tag` / `key` filters.
+- WS reply timeout is 60s; long agent thinks may cut off.
+- `_register_agent_tools` swallows all exceptions — if agent passthroughs are missing, check that `sparkbyte_memory.db` and the `agents` table exist.
+- DB writes (`write_memory`) are read-write; the rest of the DB tools open the file with `mode=ro`.
+- No auth on SSE/HTTP transports — bind to localhost only or front with a reverse proxy if exposing.
+
+---
+
+## Verifying after a config change
+
+After editing `server.py`, restart the MCP client and:
+
+```
+list_forged_tools_registry()       # should dump dynamic_tools_registry.json
+ask_sparkbyte("ping")              # should return a sparkbyte reply
+call_forged_tool("coin_flip")      # should return "heads" or "tails"
+```
+
+If `ask_sparkbyte` returns `[SparkByte unreachable: ...]`, the engine WS isn't running on `SPARKBYTE_WS`.
