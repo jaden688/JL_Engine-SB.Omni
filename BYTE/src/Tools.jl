@@ -247,11 +247,17 @@ function _load_dynamic_tools!(root::String)
                     local _sym = fn_sym
                     TOOL_MAP[name] = (args) -> Base.invokelatest(getfield(@__MODULE__, _sym), args)
                     filter!(e -> e["name"] != name, DYNAMIC_SCHEMA)
+                    raw_params = get(entry, "parameters", Dict{String,Any}(
+                        "type"=>"OBJECT","properties"=>Dict{String,Any}(),"required"=>String[]))
+                    # Gemini: enforce type=OBJECT when properties/required present
+                    if (haskey(raw_params, "properties") || haskey(raw_params, "required")) &&
+                       uppercase(string(get(raw_params, "type", ""))) != "OBJECT"
+                        raw_params["type"] = "OBJECT"
+                    end
                     push!(DYNAMIC_SCHEMA, Dict{String,Any}(
                         "name"        => name,
                         "description" => string(get(entry, "description", "Dynamic tool: $name")),
-                        "parameters"  => get(entry, "parameters", Dict{String,Any}(
-                            "type"=>"OBJECT","properties"=>Dict{String,Any}(),"required"=>String[])),
+                        "parameters"  => raw_params,
                     ))
                 end
             end
@@ -699,6 +705,11 @@ function tool_forge_new_tool(args)
         description = string(get(args, "description", "Dynamically forged tool: $name"))
         parameters  = get(args, "parameters", Dict{String,Any}(
             "type"=>"OBJECT","properties"=>Dict{String,Any}(),"required"=>String[]))
+        # Gemini requires type=OBJECT whenever properties/required are present
+        if (haskey(parameters, "properties") || haskey(parameters, "required")) &&
+           uppercase(string(get(parameters, "type", ""))) != "OBJECT"
+            parameters["type"] = "OBJECT"
+        end
         root        = _project_root[]
 
         # ── Forge gate — live Core.eval into the runtime module. ON by default
