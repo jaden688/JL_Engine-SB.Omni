@@ -1869,7 +1869,7 @@ function connect(){
   ws.onopen=()=>{
     sbStatus.textContent='● Connected';
     sbStatus.style.color='var(--green)';
-    loadPersonas();
+    loadOperators();
     send({type:'builder_cmd',cmd:'get_settings'});
     _requestBackendProbe(false);
     refreshOllamaModels();
@@ -1936,7 +1936,7 @@ function connect(){
         setTimeout(refreshOllamaModels, 500);
       }
     }
-    else if(d.type==='personas_list'){populatePersonas(d.personas);}
+    else if(d.type==='personas_list'){populateOperators(d.operators||d.personas);}
     else if(d.type==='operators_list'){populateOperators(d.operators);}
     else if(d.type==='search_results'){showSearchResults(d.results,d.query);}
     else if(d.type==='settings_all_status'){
@@ -2255,7 +2255,7 @@ function toggleEngineMode(){
 
 /* ====== FILE TREE ====== */
 function loadFileTree(){send({type:'builder_cmd',cmd:'list_tree'});}
-function loadPersonas(){send({type:'builder_cmd',cmd:'list_personas'});}
+function loadOperators(){send({type:'builder_cmd',cmd:'list_operators'});}
 
 function renderTree(files){
   const exts=['.jl','.json','.toml','.py','.md','.txt','.html','.css','.js','.yaml','.yml','.env','.gitignore'];
@@ -2629,11 +2629,7 @@ chatPanel.addEventListener('drop',e=>{
   }
 });
 
-/* ====== PERSONA ====== */
-function populatePersonas(names){
-  personaSelect.innerHTML=names.map(n=>'<option value="'+n+'">'+n+'</option>').join('');
-  personaSelect.value='SparkByte';
-}
+/* ====== OPERATOR ====== */
 function populateOperators(names){
   if(!names||!names.length)return;
   personaSelect.innerHTML=names.map(n=>'<option value="'+n+'">'+n+'</option>').join('');

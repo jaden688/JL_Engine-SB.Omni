@@ -1934,7 +1934,7 @@ const TOOL_MAP = Dict{String, Function}(
     "card_cruncher"  => tool_card_cruncher,
 )
 
-function dispatch(name::String, args; persona::String="SparkByte")
+function dispatch(name::String, args; operator::String="SparkByte")
     fn = get(TOOL_MAP, name, nothing)
     fn === nothing && return Dict("error" => "Unknown tool: $name. Available: $(join(sort(collect(keys(TOOL_MAP))), ", "))")
     t0 = datetime2unix(now())
@@ -1960,7 +1960,7 @@ function dispatch(name::String, args; persona::String="SparkByte")
     end
     elapsed = round(Int, (datetime2unix(now()) - t0) * 1000)
     @async try
-        _db_write_tool_usage(name, JSON.json(args), JSON.json(result), elapsed, persona)
+        _db_write_tool_usage(name, JSON.json(args), JSON.json(result), elapsed, operator)
     catch e
         @warn "Async tool usage logging failed" tool=name exception=(e, catch_backtrace())
     end

@@ -22,15 +22,15 @@ Base.@kwdef struct EngineConfig
     root_dir::String = pwd()
     master_file::String = "JLframe_Engine_Framework.json"
     behavior_states_file::String = "behavior_states.json"
-    mpf_registry_file::String = joinpath("personas", "Personas.mpf.json")
-    personas_dir::String = "personas"
+    mpf_registry_file::String = joinpath("operators", "Operators.mpf.json")
+    operators_dir::String = "operators"
     safety_on::Bool = true
-    default_persona_name::String = "SparkByte"
+    default_operator_name::String = "SparkByte"
     history_length::Int = 20
 end
 
 Base.@kwdef struct MPFProfile
-    persona_file::String
+    operator_file::String
     default_memory_mode::Union{Nothing, String} = nothing
     default_backend_id::Union{Nothing, String} = nothing
     drive_type::Union{Nothing, String} = nothing
@@ -81,7 +81,7 @@ struct RhythmState
 end
 
 Base.@kwdef struct DriftPressureInput
-    persona_alignment_score::Float64 = 1.0
+    operator_alignment_score::Float64 = 1.0
     behavior_grid_alignment_score::Float64 = 1.0
     safety_alignment_score::Float64 = 1.0
     memory_alignment_score::Float64 = 1.0

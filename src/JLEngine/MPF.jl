@@ -8,7 +8,7 @@ function load_mpf_registry(registry_path::AbstractString)
         persona_file isa AbstractString || continue
         tags = [String(tag) for tag in get(entry, "tags", Any[]) if tag isa AbstractString]
         profiles[String(display_name)] = MPFProfile(
-            persona_file=String(persona_file),
+            operator_file=String(persona_file),
             default_memory_mode=get(entry, "default_memory_mode", nothing),
             default_backend_id=get(entry, "default_backend_id", nothing),
             drive_type=get(entry, "drive_type", nothing),
@@ -19,7 +19,7 @@ function load_mpf_registry(registry_path::AbstractString)
     return profiles
 end
 
-function load_persona_file(path::AbstractString)
+function load_operator_file(path::AbstractString)
     data = load_json_safely(path)
     isempty(data) && return data
 

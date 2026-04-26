@@ -716,7 +716,7 @@ function _execute_tool_call(ws, engine, name::String, args; loop_iter::Int=0)
     log_tool_call(name, args, loop_iter)
 
     t0 = datetime2unix(now())
-    result = dispatch(name, args; persona=string(engine.current_persona_name))
+    result = dispatch(name, args; operator=string(engine.current_operator_name))
     elapsed = round(Int, (datetime2unix(now()) - t0) * 1000)
     result_dict = result isa Dict ? result : Dict("result" => string(result))
 
@@ -743,9 +743,9 @@ This replaces the old hardcoded SELF_CONTEXT_PROMPT constant — context is now 
 not hardcoded to SparkByte.
 """
 function _build_self_context(engine)
-    pdata = engine.current_persona_data
-    pname = string(engine.current_persona_name)
-    pfile = something(engine.current_persona_file, "unknown")
+    pdata = engine.current_operator_data
+    pname = string(engine.current_operator_name)
+    pfile = something(engine.current_operator_file, "unknown")
     project_root = isempty(_project_root[]) ? pwd() : _project_root[]
 
     # Pull identity fields from the fat operator JSON
@@ -1163,16 +1163,16 @@ function _handle_builder_cmd(ws, p)
         end
 
     elseif cmd == "list_personas"
-        personas_file = joinpath(root, "data", "personas", "Personas.mpf.json")
+        operators_file = joinpath(root, "data", "operators", "Operators.mpf.json")
         names = String[]
-        if isfile(personas_file)
-            data = JSON.parsefile(personas_file)
+        if isfile(operators_file)
+            data = JSON.parsefile(operators_file)
             for name in keys(data)
                 push!(names, name)
             end
             sort!(names)
         end
-        _ws_send(ws, JSON.json(Dict("type"=>"personas_list", "personas"=>names)))
+        _ws_send(ws, JSON.json(Dict("type"=>"operators_list", "operators"=>names)))
 
     elseif cmd == "list_operators"
         operators_file = joinpath(root, "data", "operators", "Operators.mpf.json")
@@ -1480,16 +1480,16 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
         return
     end
 
-    # Persona switch
-    if p["type"] == "persona_change"
-        name = get(p, "persona", "")
-        old  = engine.current_persona_name
+    # Operator switch (legacy alias: "persona_change" accepted for old clients)
+    if p["type"] == "operator_change" || p["type"] == "persona_change"
+        name = get(p, "operator", get(p, "persona", ""))
+        old  = engine.current_operator_name
         ok   = false
         if !isempty(name)
-            ok = Main.JLEngine.set_persona!(engine, name)
+            ok = Main.JLEngine.set_operator!(engine, name)
         end
-        log_persona_change(old, name, ok)
-        out = Dict("type"=>"tool", "text"=>"⚡ Persona → $name")
+        log_operator_change(old, name, ok)
+        out = Dict("type"=>"tool", "text"=>"⚡ Operator → $name")
         _ws_send(ws, JSON.json(out)); log_ws_message_out(out)
         return
     end
@@ -1613,8 +1613,8 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
             if gear_up in ["LITE_REASONING", "EXPRESSIVE_SYNTH", "TASK_FLOW"]
                 _current_gear = gear_up
                 log_event("slash_cmd", Dict{String,Any}("cmd"=>"/gear", "value"=>gear_up, "action"=>"gear_override"))
-            elseif Main.JLEngine.set_persona!(engine, string(args[1]))
-                log_persona_change(engine.current_persona_name, string(args[1]), true)
+            elseif Main.JLEngine.set_operator!(engine, string(args[1]))
+                log_operator_change(engine.current_operator_name, string(args[1]), true)
             end
         end
         out = Dict("type"=>"ui_update", "gear"=>_current_gear, "modes"=>_active_modes)
@@ -1633,7 +1633,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
     push!(history, Dict("role"=>"user", "parts"=>parts_list))
 
     # --- JL Engine cognitive snapshot (once per turn) ---
-    snapshot = Main.JLEngine.analyze_turn!(engine, txt; image=img, mime=mime, persona_name=engine.current_persona_name)
+    snapshot = Main.JLEngine.analyze_turn!(engine, txt; image=img, mime=mime, operator_name=engine.current_operator_name)
     log_engine_snapshot(snapshot)
 
     _current_gear  = snapshot["gait"]
@@ -1848,7 +1848,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
             "reason" => string(reason),
             "loop_iter" => Int(loop_iter),
             "model" => string(_current_model),
-            "operator" => string(engine.current_persona_name),
+            "operator" => string(engine.current_operator_name),
         ))
     end
 
@@ -2025,7 +2025,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                         _ws_send(ws, JSON.json(Dict("type"=>"thinking_done",
                             "text"=>raw_thinking, "chars"=>length(raw_thinking))))
                         @async _db_write_reasoning(first(txt,120), raw_thinking, _current_model,
-                            string(engine.current_persona_name))
+                            string(engine.current_operator_name))
                     elseif haskey(part,"text")
                         final_reply *= part["text"]
                         out = Dict("type"=>"spark","text"=>part["text"])
@@ -2174,7 +2174,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                     if !isempty(rsn)
                         _ws_send(ws, JSON.json(Dict("type"=>"thinking","text"=>rsn)))
                         _ws_send(ws, JSON.json(Dict("type"=>"thinking_done","text"=>rsn,"chars"=>length(rsn))))
-                        @async _db_write_reasoning(first(txt,120), rsn, _current_model, string(engine.current_persona_name))
+                        @async _db_write_reasoning(first(txt,120), rsn, _current_model, string(engine.current_operator_name))
                     end
                 end
 
@@ -2447,7 +2447,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
         snap = snapshot isa Dict ? snapshot : Dict{String,Any}()
         _ws_send(ws, JSON.json(Dict(
             "type"        => "engine_state",
-            "operator"     => string(engine.current_persona_name),
+            "operator"     => string(engine.current_operator_name),
             "gait"        => string(engine.current_gait),
             "rhythm"      => string(engine.current_rhythm_mode),
             "aperture"    => string(get(get(snap, "aperture_state", Dict()), "mode", "GUARDED")),
@@ -2483,7 +2483,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
             "loop_count"      => Int(loop_iter),
             "last_tool"       => last_tool_name_used,
             "last_tool_ms"    => last_tool_elapsed_used,
-            "operator"        => string(engine.current_persona_name),
+            "operator"        => string(engine.current_operator_name),
             "model"           => string(_current_model),
             "elapsed_ms"      => elapsed_total,
         )
@@ -2499,7 +2499,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
         bname      = string(get(behavior, "name", "Engaged-Loose"))
         mood       = replace(lowercase(bname), r"[^a-z/]" => "-")
         gait       = string(get(snapshot, "gait", "walk"))
-        persona    = string(engine.current_persona_name)
+        persona    = string(engine.current_operator_name)
         thought    = "Responded to: \"$(first(txt, 120))\". " *
                      "Reply ($(length(final_reply)) chars): $(first(final_reply, 220)). " *
                      "Tone: $tone. Loops: $loop_iter. Elapsed: $(elapsed_total)ms."
@@ -2645,7 +2645,7 @@ function serve(engine; host::String="127.0.0.1", port::Int=8081, extra_http_hand
                     write(stream, JSON.json(Dict(
                         "status" => "ok",
                         "service" => "sparkbyte",
-                        "operator" => string(engine.current_persona_name),
+                        "operator" => string(engine.current_operator_name),
                         "session_id" => _session_id,
                         "time" => string(now()),
                     )))
