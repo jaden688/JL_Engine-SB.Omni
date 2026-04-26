@@ -119,13 +119,23 @@ function _scan_ws_types(byte_jl::String)
     ui_jl = joinpath(dirname(byte_jl), "ui.html")
     isfile(ui_jl) || return issues
 
-    server_src = read(byte_jl, String)
-    ui_src     = read(ui_jl,   String)
+    ui_src = read(ui_jl, String)
 
-    # Types the server SENDS  ("type" => "foo")
+    # Scan ALL server-side Julia files (BYTE/src/*.jl + src/*.jl) so that
+    # autopilot broadcasts in Autopilot.jl, TTS sends in TTS.jl, etc. are
+    # not falsely flagged as missing.
+    repo_root  = dirname(dirname(dirname(byte_jl)))   # BYTE.jl → BYTE/src → BYTE → repo root
+    scan_dirs  = [dirname(byte_jl), joinpath(repo_root, "src")]
     sent = Set{String}()
-    for m in eachmatch(r"\"type\"\s*=>\s*\"([a-z_]+)\"", server_src)
-        push!(sent, m[1])
+    for dir in scan_dirs
+        isdir(dir) || continue
+        for f in readdir(dir; join=true)
+            endswith(f, ".jl") || continue
+            src = try read(f, String) catch; continue end
+            for m in eachmatch(r"\"type\"\s*=>\s*\"([a-z_]+)\"", src)
+                push!(sent, m[1])
+            end
+        end
     end
 
     # Types the UI HANDLES  (d.type === 'foo')
@@ -144,6 +154,9 @@ function _scan_ws_types(byte_jl::String)
         "input_image",
         "input_text",
         "text",
+        # Browser tool action types (used inside tool payloads, not WS messages)
+        "click", "fill", "goto", "press", "read", "screenshot",
+        "select", "evaluate", "wait", "wait_for",
     ])
 
     for t in sort(collect(setdiff(sent, handled, noise)))

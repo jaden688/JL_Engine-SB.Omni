@@ -994,7 +994,7 @@ body{background:transparent;color:var(--green);height:100vh;height:100dvh;displa
 
   <!-- CHAT SIDEBAR -->
   <div id="chat-panel" class="view-pane" style="position:relative;">
-    <div id="card-drop-overlay"><span class="drop-icon">🃏</span><span class="drop-label">Drop Character Card</span></div>
+    <div id="card-drop-overlay"><span class="drop-icon">🃏</span><span class="drop-label">Drop Agent Card</span></div>
     <div id="chat-header">
       <span id="chat-toggle" onclick="toggleChat()">◀</span>
       <span class="chat-live-dot"></span>
@@ -1936,7 +1936,6 @@ function connect(){
         setTimeout(refreshOllamaModels, 500);
       }
     }
-    else if(d.type==='personas_list'){populateOperators(d.operators||d.personas);}
     else if(d.type==='operators_list'){populateOperators(d.operators);}
     else if(d.type==='search_results'){showSearchResults(d.results,d.query);}
     else if(d.type==='settings_all_status'){
@@ -1962,6 +1961,7 @@ function connect(){
     else if(d.type==='autopilot_acted'){_autopilotActed(d);}
     else if(d.type==='autopilot_skipped'){_autopilotSkipped(d);}
     else if(d.type==='autopilot_error'){_autopilotError(d);}
+    else if(d.type==='julian_curiosity'){_julianCuriosityNotify(d);}
     else if(d.type==='speech'){_enqueueSpeech(d);}
     else if(d.type==='speech_error'){_applySpeechError(d);}
     else if(d.type==='text'||d.type==='input_text'){appendChat('<div class="msg spark">'+marked.parse(String(d.text||d.content||''))+'</div>');}
@@ -2090,6 +2090,7 @@ function _applySpeechError(d){
    fields (gait/rhythm/aperture/drift) ride along on every event so the UI can
    colour-code and label the bubble with what's actually driving her right now. */
 let _autopilotBubbles = {};  // tick -> DOM id, so a follow-up 'thinking' event updates the same bubble
+let _autopilotIsRunning = false;
 
 function _autopilotChipSet(text, cls){
   const chip=$('autopilot-chip'); if(!chip) return;
@@ -2100,6 +2101,7 @@ function _autopilotChipSet(text, cls){
 }
 
 function _autopilotState(d){
+  _autopilotIsRunning = !!d.running;
   if(d.running){ _autopilotChipSet('autopilot on · '+(d.interval_s||'?')+'s', 'idle'); }
   else         { _autopilotChipSet('autopilot off', 'idle'); }
 }
@@ -2153,6 +2155,13 @@ function _autopilotSkipped(d){
 function _autopilotError(d){
   _autopilotChipSet('autopilot error', 'idle');
   console.warn('[autopilot] tick error', d);
+}
+
+function _julianCuriosityNotify(d){
+  // Flash the autopilot chip briefly to show Julian completed a background hunt
+  _autopilotChipSet('julian · hunt done', 'idle');
+  console.info('[julian] curiosity hunt complete', d.task||'', d.hunt_id||'');
+  setTimeout(()=>{ _autopilotChipSet(_autopilotIsRunning?'autopilot on · idle':'autopilot off','idle'); }, 4000);
 }
 
 /* ====== TOOL ACTIVE INDICATOR ====== */
@@ -2632,10 +2641,10 @@ chatPanel.addEventListener('drop',e=>{
 /* ====== OPERATOR ====== */
 function populateOperators(names){
   if(!names||!names.length)return;
-  personaSelect.innerHTML=names.map(n=>'<option value="'+n+'">'+n+'</option>').join('');
-  personaSelect.value=names.includes('SparkByte')?'SparkByte':names[0];
+  agentSelect.innerHTML=names.map(n=>'<option value="'+n+'">'+n+'</option>').join('');
+  agentSelect.value=names.includes('SparkByte')?'SparkByte':names[0];
 }
-agentSelect.onchange=e=>send({type:'agent_change',agent:e.target.value});
+agentSelect.onchange=e=>send({type:'operator_change',operator:e.target.value});
 modelSelect.onchange=e=>send({type:'model_change',model:e.target.value});
 
 /* ====== SEARCH ====== */
