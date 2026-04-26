@@ -332,4 +332,18 @@ const TOOLS_SCHEMA = [Dict("function_declarations" => [
             "required" => ["prompt"]
         )
     ),
+    Dict(
+        "name" => "ask_chatgpt",
+        "description" => "Send a command or question to ChatGPT (gpt-4o) and get a reply. Use this to delegate reasoning, drafting, analysis, or any task to ChatGPT. Requires OPENAI_API_KEY env var.",
+        "parameters" => Dict(
+            "type" => "OBJECT",
+            "properties" => Dict(
+                "command"   => Dict("type" => "STRING", "description" => "The command or question to send to ChatGPT"),
+                "context"   => Dict("type" => "STRING", "description" => "Optional background context to prepend"),
+                "model"     => Dict("type" => "STRING", "description" => "OpenAI model to use. Default: gpt-4o"),
+                "timeout_s" => Dict("type" => "INTEGER", "description" => "Max seconds to wait. Default: 60")
+            ),
+            "required" => ["command"]
+        )
+    ),
 ])]

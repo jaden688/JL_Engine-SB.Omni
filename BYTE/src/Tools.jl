@@ -1997,6 +1997,46 @@ function tool_codex_task(args)
     _run_ai_cli(cli; timeout_s=timeout, cwd=cwd)
 end
 
+function tool_ask_chatgpt(args)
+    command = string(get(args, "command", get(args, "prompt", "")))
+    isempty(command) && return Dict("error" => "command is required")
+    context = string(get(args, "context", ""))
+    model   = string(get(args, "model", "gpt-4o"))
+    timeout = Int(get(args, "timeout_s", 60))
+
+    api_key = get(ENV, "OPENAI_API_KEY", "")
+    isempty(api_key) && return Dict("error" => "OPENAI_API_KEY not set", "status" => "error")
+
+    messages = Any[Dict("role" => "user", "content" => isempty(context) ? command : "$context\n\n$command")]
+
+    payload = JSON3.write(Dict(
+        "model"    => model,
+        "messages" => messages,
+    ))
+
+    cmd = `curl -s -m $timeout -X POST https://api.openai.com/v1/chat/completions \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer $api_key" \
+        -d $payload`
+
+    out = try
+        String(read(cmd))
+    catch e
+        return Dict("error" => "curl failed: $e", "status" => "error")
+    end
+
+    parsed = try JSON3.read(out) catch _; nothing end
+    if parsed === nothing
+        return Dict("error" => "bad JSON from OpenAI", "raw" => out, "status" => "error")
+    end
+    if haskey(parsed, "error")
+        return Dict("error" => string(parsed["error"]["message"]), "status" => "error")
+    end
+
+    reply = try string(parsed["choices"][1]["message"]["content"]) catch _; out end
+    return Dict("reply" => reply, "status" => "ok", "model" => model)
+end
+
 const TOOL_MAP = Dict{String, Function}(
     "read_file"      => tool_read_file,
     "write_file"     => tool_write_file,
@@ -2021,6 +2061,7 @@ const TOOL_MAP = Dict{String, Function}(
     "ask_gemini"     => tool_ask_gemini,
     "ask_claude"     => tool_ask_claude,
     "codex_task"     => tool_codex_task,
+    "ask_chatgpt"    => tool_ask_chatgpt,
 )
 
 function dispatch(name::String, args; operator::String="SparkByte")
