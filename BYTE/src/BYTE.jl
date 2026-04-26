@@ -257,7 +257,7 @@ const PROVIDER_PROFILES = Dict{String,Dict{String,Any}}(
     ),
     "azure" => Dict(
         "endpoint"        => "",
-        "env_key"         => "AZURE_AI_API_KEY",
+        "env_key"         => "AZURE_OPENAI_API_KEY",
         "supports_tools"  => true,
         "supports_top_p"  => true,
         "supports_vision" => true,
@@ -645,10 +645,10 @@ function _probe_backends_live()
         set_provider("openai"; ok=(st == 200), status=st, reason=_probe_reason(st, err), checked=true, has_key=true)
     end
 
-    azure_key = strip(get(ENV, "AZURE_AI_API_KEY", ""))
+    azure_key = strip(get(ENV, "AZURE_OPENAI_API_KEY", ""))
     azure_endpoint = rstrip(strip(get(ENV, "AZURE_OPENAI_ENDPOINT", "")), '/')
     if isempty(azure_key) || isempty(azure_endpoint)
-        set_provider("azure"; ok=false, reason="missing AZURE_AI_API_KEY or AZURE_OPENAI_ENDPOINT",
+        set_provider("azure"; ok=false, reason="missing AZURE_OPENAI_API_KEY or AZURE_OPENAI_ENDPOINT",
             checked=false, has_key=(!isempty(azure_key)))
     else
         azure_headers = Pair{String,String}["api-key" => azure_key]
@@ -2283,8 +2283,14 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
 
             # Azure: build per-deployment endpoint from AZURE_OPENAI_ENDPOINT env var
             if provider == "azure"
-                base = rstrip(get(ENV, "AZURE_OPENAI_ENDPOINT", ""), '/')
-                api_url = "$base/openai/deployments/$actual_model/chat/completions?api-version=2024-12-01-preview"
+                base    = rstrip(get(ENV, "AZURE_OPENAI_ENDPOINT", ""), '/')
+                deploy  = let d = strip(get(ENV, "AZURE_OPENAI_DEPLOYMENT", ""))
+                              isempty(d) ? actual_model : d
+                          end
+                api_ver = let v = strip(get(ENV, "AZURE_OPENAI_API_VERSION", ""))
+                              isempty(v) ? "2025-01-01-preview" : v
+                          end
+                api_url = "$base/openai/deployments/$deploy/chat/completions?api-version=$api_ver"
             end
 
             # Build payload from profile — profile is the single source of truth
@@ -2303,13 +2309,17 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
                 payload["tools"]       = oai_tools
                 payload["tool_choice"] = "auto"
             end
-            # gpt‑oss models on Cerebras support reasoning_effort
-            if provider == "cerebras" && startswith(_current_model, "gpt-oss")
+            # gpt‑oss models on Cerebras and Azure support reasoning_effort
+            if (provider == "cerebras" || provider == "azure") && startswith(_current_model, "gpt-oss")
                 payload["reasoning_effort"] = "medium"
                 payload["max_completion_tokens"] = 32768
             end
 
-            headers = ["Content-Type"=>"application/json", "Authorization"=>"Bearer $api_key"]
+            headers = if provider == "azure"
+                Pair{String,String}["Content-Type"=>"application/json", "api-key"=>api_key]
+            else
+                Pair{String,String}["Content-Type"=>"application/json", "Authorization"=>"Bearer $api_key"]
+            end
             resp = try
                 HTTP.post(api_url, headers, JSON.json(payload))
             catch e

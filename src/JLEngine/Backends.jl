@@ -22,6 +22,10 @@ struct CustomHTTPBackend <: AbstractBackend
     config::Dict{String, Any}
 end
 
+struct AzureOpenAIBackend <: AbstractBackend
+    config::Dict{String, Any}
+end
+
 BACKEND_REGISTRY = Dict{String, Dict{String, Any}}(
     "noop-stub" => Dict{String, Any}(
         "id" => "noop-stub",
@@ -57,12 +61,20 @@ BACKEND_REGISTRY = Dict{String, Dict{String, Any}}(
         "baseUrl" => DEFAULT_OLLAMA_BASE_URL,
         "modelName" => "qwen3:4b",
     ),
+    "azure-openai" => Dict{String, Any}(
+        "id" => "azure-openai",
+        "label" => "Azure OpenAI (Fine-tuned)",
+        "provider" => "azure",
+        "env_key" => "AZURE_OPENAI_API_KEY",
+        "timeout" => 90,
+    ),
 )
 
 # Auto-detect best available backend from env vars on boot
 function _detect_default_backend()
     !isempty(get(ENV, "GEMINI_API_KEY", "")) && return "google-gemini"
     !isempty(get(ENV, "CEREBRAS_API_KEY", "")) && return "cerebras"
+    (!isempty(get(ENV, "AZURE_OPENAI_API_KEY", "")) && !isempty(get(ENV, "AZURE_OPENAI_ENDPOINT", ""))) && return "azure-openai"
     return "noop-stub"
 end
 
@@ -127,6 +139,8 @@ function get_backend(backend_id::Union{Nothing, AbstractString}=nothing; overrid
         return GoogleGeminiBackend(config)
     elseif provider == "custom_http"
         return CustomHTTPBackend(config)
+    elseif provider == "azure"
+        return AzureOpenAIBackend(config)
     end
     return NoopBackend(config)
 end
@@ -155,6 +169,14 @@ function sync_from_byte!()
             reg["modelName"] = model
         end
         "google-gemini"
+    elseif provider == "azure"
+        reg = get(BACKEND_REGISTRY, "azure-openai", nothing)
+        if reg !== nothing
+            reg["model"] = model
+            reg["model_name"] = model
+            reg["modelName"] = model
+        end
+        "azure-openai"
     elseif haskey(BACKEND_REGISTRY, provider)
         reg = BACKEND_REGISTRY[provider]
         reg["model"] = model
@@ -465,5 +487,65 @@ function generate(backend::CustomHTTPBackend, messages; options=Dict{String, Any
         return "[ERROR: Custom HTTP backend returned an empty response.]", Dict{String, Any}("backend" => "custom_http", "error" => "empty_reply", "raw" => data)
     catch exc
         return "[ERROR: Custom HTTP backend request failed.]", Dict{String, Any}("error" => sprint(showerror, exc))
+    end
+end
+
+function generate(backend::AzureOpenAIBackend, messages; options=Dict{String, Any}(), timeout=nothing)
+    endpoint  = rstrip(String(get(ENV, "AZURE_OPENAI_ENDPOINT", get(backend.config, "endpoint", ""))), '/')
+    isempty(endpoint) && return "[ERROR: Azure backend missing AZURE_OPENAI_ENDPOINT.]", Dict{String, Any}("error" => "missing_endpoint")
+    api_key   = String(get(ENV, "AZURE_OPENAI_API_KEY", get(backend.config, "api_key", "")))
+    isempty(api_key) && return "[ERROR: Azure backend missing AZURE_OPENAI_API_KEY.]", Dict{String, Any}("error" => "missing_api_key")
+    model_name = String(get(backend.config, "model", get(backend.config, "modelName", get(backend.config, "model_name", ""))))
+    deploy = let d = strip(get(ENV, "AZURE_OPENAI_DEPLOYMENT", ""))
+                 isempty(d) ? model_name : d
+             end
+    api_ver = let v = strip(get(ENV, "AZURE_OPENAI_API_VERSION", ""))
+                  isempty(v) ? "2025-01-01-preview" : v
+              end
+    url = "$endpoint/openai/deployments/$deploy/chat/completions?api-version=$api_ver"
+    headers = Dict{String, String}(
+        "Content-Type" => "application/json",
+        "api-key"      => api_key,
+    )
+    payload = Dict{String, Any}(
+        "messages" => messages,
+        "stream"   => false,
+    )
+    !isempty(options) && merge!(payload, options)
+    # gpt-oss models need reasoning_effort
+    if startswith(model_name, "gpt-oss")
+        payload["reasoning_effort"] = "medium"
+        payload["max_completion_tokens"] = 32768
+    end
+    try
+        response = HTTP.post(
+            url,
+            collect(pairs(headers)),
+            JSON3.write(payload);
+            readtimeout=(timeout === nothing ? get(backend.config, "timeout", 90) : timeout),
+            status_exception=false,
+        )
+        response_text = String(response.body)
+        if response.status < 200 || response.status >= 300
+            return "[ERROR: Azure OpenAI returned HTTP $(response.status).]", Dict{String, Any}(
+                "backend" => "azure-openai",
+                "error"   => "http_$(response.status)",
+                "status"  => response.status,
+                "body"    => first(strip(response_text), 500),
+            )
+        end
+        data = _materialize_json(JSON3.read(response_text))
+        if haskey(data, "choices") && data["choices"] isa AbstractVector && !isempty(data["choices"])
+            choice = data["choices"][1]
+            if choice isa AbstractDict
+                message = get(choice, "message", nothing)
+                if message isa AbstractDict
+                    return String(get(message, "content", "")), Dict{String, Any}("backend" => "azure-openai", "raw" => data)
+                end
+            end
+        end
+        return "[ERROR: Azure OpenAI returned an empty response.]", Dict{String, Any}("backend" => "azure-openai", "error" => "empty_reply", "raw" => data)
+    catch exc
+        return "[ERROR: Azure OpenAI request failed.]", Dict{String, Any}("error" => sprint(showerror, exc))
     end
 end
