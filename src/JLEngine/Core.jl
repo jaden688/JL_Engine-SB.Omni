@@ -12,10 +12,10 @@ mutable struct JLEngineCore
     rhythm_engine::RhythmEngine
     memory_system::HybridMemorySystem
     state_manager::StateManager
-    agent_manager::AgentManager
-    current_agent_name::String
-    current_agent_data::Dict{String, Any}
-    current_agent_file::Union{Nothing, String}
+    operator_manager::OperatorManager
+    current_operator_name::String
+    current_operator_data::Dict{String, Any}
+    current_operator_file::Union{Nothing, String}
     current_gait::String
     current_rhythm_mode::String
     stability_score::Float64
@@ -43,34 +43,34 @@ function JLEngineCore(config::EngineConfig=EngineConfig())
         RhythmEngine(),
         HybridMemorySystem(),
         StateManager(),
-        AgentManager(config.root_dir, config.agents_dir),
-        config.default_agent_name,
+        OperatorManager(config.root_dir, config.operators_dir),
+        config.default_operator_name,
         Dict{String, Any}(),
         nothing,
         "walk",
         "flop",
         0.5,
     )
-    set_agent!(engine, config.default_agent_name)
+    set_operator!(engine, config.default_operator_name)
     return engine
 end
 
-function set_agent!(engine::JLEngineCore, agent_name::AbstractString)
-    selected_name = haskey(engine.mpf_profiles, agent_name) ? String(agent_name) : engine.config.default_agent_name
+function set_operator!(engine::JLEngineCore, operator_name::AbstractString)
+    selected_name = haskey(engine.mpf_profiles, operator_name) ? String(operator_name) : engine.config.default_operator_name
     profile = get(engine.mpf_profiles, selected_name, nothing)
     profile === nothing && return false
 
-    engine.current_agent_name = selected_name
-    engine.current_agent_file = profile.agent_file
-    engine.agent_state["emotion"] = nothing
-    engine.agent_state["emotion_meta"] = nothing
+    engine.current_operator_name = selected_name
+    engine.current_operator_file = profile.operator_file
+    engine.persona_state["emotion"] = nothing
+    engine.persona_state["emotion_meta"] = nothing
 
-    agent_path = resolve_path(engine.config.root_dir, joinpath(engine.config.agents_dir, profile.agent_file))
-    engine.current_agent_data = isfile(agent_path) ? load_agent_file(agent_path) : Dict{String, Any}()
-    set_agent_state!(engine.emotional_aperture, engine.agent_state)
-    set_emotion_palette!(engine.emotional_aperture, get(engine.current_agent_data, "emotion_palette", Any[]))
+    operator_path = resolve_path(engine.config.root_dir, joinpath(engine.config.operators_dir, profile.operator_file))
+    engine.current_operator_data = isfile(operator_path) ? load_operator_file(operator_path) : Dict{String, Any}()
+    set_persona_state!(engine.emotional_aperture, engine.persona_state)
+    set_emotion_palette!(engine.emotional_aperture, get(engine.current_operator_data, "emotion_palette", Any[]))
     profile.drive_type !== nothing && set_drive_type!(engine.emotional_aperture, profile.drive_type)
-    set_active_agent!(engine.agent_manager, selected_name, engine.current_agent_data, engine.mpf_profiles)
+    set_active_operator!(engine.operator_manager, selected_name, engine.current_operator_data, engine.mpf_profiles)
 
     # Apply the JL agent's default LLM backend
     if profile.default_backend_id !== nothing && !isempty(profile.default_backend_id)
@@ -83,8 +83,8 @@ function set_agent!(engine::JLEngineCore, agent_name::AbstractString)
     return true
 end
 
-function analyze_turn!(engine::JLEngineCore, user_message::AbstractString; image=nothing, mime=nothing, agent_name=nothing, safety_on::Bool=engine.config.safety_on)
-    agent_name !== nothing && set_agent!(engine, String(agent_name))
+function analyze_turn!(engine::JLEngineCore, user_message::AbstractString; image=nothing, mime=nothing, operator_name=nothing, safety_on::Bool=engine.config.safety_on)
+    operator_name !== nothing && set_operator!(engine, String(operator_name))
 
     signals = score(engine.signal_scorer, user_message)
     # If image is present, boost arousal or adjust signals if needed
@@ -96,7 +96,7 @@ function analyze_turn!(engine::JLEngineCore, user_message::AbstractString; image
     engine.current_gait = _infer_gait(signals)
 
     drift_input = DriftPressureInput(
-        agent_alignment_score=1.0 - min(0.25, signals.confusion * 0.2),
+        operator_alignment_score=1.0 - min(0.25, signals.confusion * 0.2),
         behavior_grid_alignment_score=1.0 - min(0.35, signals.arousal * 0.15),
         safety_alignment_score=safety_on ? 1.0 : 0.9,
         memory_alignment_score=1.0 - min(0.40, signals.memory_density * 0.25),
@@ -133,13 +133,13 @@ function analyze_turn!(engine::JLEngineCore, user_message::AbstractString; image
         conversation_pacing=signals.pace,
         memory_density=signals.memory_density,
     )
-    update_dynamic_weight!(engine.agent_manager, signals; rhythm_state=_rhythm_state_dict(rhythm_state), aperture_state=aperture_state)
-    agent_projection = get_projection(engine.agent_manager)
+    update_dynamic_weight!(engine.operator_manager, signals; rhythm_state=_rhythm_state_dict(rhythm_state), aperture_state=aperture_state)
+    operator_projection = get_projection(engine.operator_manager)
 
     return Dict{String, Any}(
-        "agent" => engine.current_agent_name,
-        "agent_file" => engine.current_agent_file,
-        "agent_projection" => agent_projection,
+        "operator" => engine.current_operator_name,
+        "operator_file" => engine.current_operator_file,
+        "operator_projection" => operator_projection,
         "trigger" => trigger,
         "gait" => engine.current_gait,
         "signals" => _signals_dict(signals),
@@ -150,7 +150,7 @@ function analyze_turn!(engine::JLEngineCore, user_message::AbstractString; image
         "aperture_state" => aperture_state,
         "advisory" => advisory,
         "core_rules" => engine.core_rules,
-        "memory_context" => get_context(engine.memory_system, engine.current_agent_name),
+        "memory_context" => get_context(engine.memory_system, engine.current_operator_name),
         "has_image" => image !== nothing,
     )
 end
@@ -168,19 +168,19 @@ function record_turn!(engine::JLEngineCore, user_message::AbstractString, output
     end
     # Note: image content is currently not saved in SQLite memory to save space, 
     # but we could add image hashes or small thumbnails if needed.
-    update_after_turn!(engine.memory_system, engine.current_agent_name, user_message, output, engine_state)
+    update_after_turn!(engine.memory_system, engine.current_operator_name, user_message, output, engine_state)
     rhythm_snapshot = snapshot isa AbstractDict ? get(snapshot, "rhythm", nothing) : nothing
     drift_snapshot = snapshot isa AbstractDict ? get(snapshot, "drift", Dict{String, Any}()) : Dict{String, Any}()
     update_from_output!(engine.state_manager, output; rhythm_state=rhythm_snapshot, gait=engine.current_gait)
     apply_output_feedback!(engine.emotional_aperture, output; rhythm_state=rhythm_snapshot, gait=engine.current_gait)
     engine.stability_score = clamp(0.55 - get(drift_snapshot, "pressure", 0.0) * 0.25 + export_snapshot(engine.state_manager)["last_sentiment"] * 0.05, 0.1, 0.95)
-    return get_context(engine.memory_system, engine.current_agent_name)
+    return get_context(engine.memory_system, engine.current_operator_name)
 end
 
-get_llm_boot_prompt(engine::JLEngineCore, target::AbstractString="generic_llm") = get_llm_boot_prompt(engine.current_agent_data, target)
+get_llm_boot_prompt(engine::JLEngineCore, target::AbstractString="generic_llm") = get_llm_boot_prompt(engine.current_operator_data, target)
 
-function run_turn!(engine::JLEngineCore, user_message::AbstractString; image=nothing, mime=nothing, agent_name=nothing, backend_id=nothing, backend_overrides=nothing)
-    snapshot = analyze_turn!(engine, user_message; image=image, mime=mime, agent_name=agent_name)
+function run_turn!(engine::JLEngineCore, user_message::AbstractString; image=nothing, mime=nothing, operator_name=nothing, backend_id=nothing, backend_overrides=nothing)
+    snapshot = analyze_turn!(engine, user_message; image=image, mime=mime, operator_name=operator_name)
     messages = _build_messages(engine, user_message, snapshot; image=image, mime=mime)
     options = Dict{String, Any}(
         "temperature" => clamp(get(snapshot["aperture_state"], "temp", 0.45) + get(snapshot["drift"], "temperature_delta", 0.0), 0.1, 1.5),
@@ -264,16 +264,15 @@ function _drift_response_dict(response::DriftResponse)
 end
 
 function _build_messages(engine::JLEngineCore, user_text::AbstractString, snapshot::AbstractDict; image=nothing, mime=nothing)
-    projection = get(snapshot, "agent_projection", engine.current_agent_data)
+    projection = get(snapshot, "operator_projection", engine.current_operator_data)
     lines = String[]
     !isempty(engine.core_rules) && begin
         push!(lines, "CORE RULES:")
         append!(lines, ["- $(rule)" for rule in engine.core_rules])
     end
     push!(lines, "")
-    agent_name = get(projection, "name", engine.current_agent_name)
-    push!(lines, "ACTIVE JL AGENT: $(agent_name)")
-    push!(lines, "You are an agent executing real tools against a real system. Not a JL agent, not a character, not a roleplay. When you say you did something, you did it.")
+    operator_name = get(projection, "name", engine.current_operator_name)
+    push!(lines, "ACTIVE OPERATOR: $(operator_name)")
 
     # IDENTITY — the agent's actual self-description from the Full.json file.
     # Without this the model only knows the name and has no idea who it's playing.

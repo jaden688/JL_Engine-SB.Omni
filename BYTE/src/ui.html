@@ -1869,7 +1869,7 @@ function connect(){
   ws.onopen=()=>{
     sbStatus.textContent='● Connected';
     sbStatus.style.color='var(--green)';
-    loadAgents();
+    loadOperators();
     send({type:'builder_cmd',cmd:'get_settings'});
     _requestBackendProbe(false);
     refreshOllamaModels();
@@ -1936,7 +1936,8 @@ function connect(){
         setTimeout(refreshOllamaModels, 500);
       }
     }
-    else if(d.type==='agents_list'){populateAgents(d.agents);}
+    else if(d.type==='personas_list'){populateOperators(d.operators||d.personas);}
+    else if(d.type==='operators_list'){populateOperators(d.operators);}
     else if(d.type==='search_results'){showSearchResults(d.results,d.query);}
     else if(d.type==='settings_all_status'){
       const MAP={gemini:'apikey-status',xai:'xai-key-status',openai:'openai-key-status',cerebras:'cerebras-key-status'};
@@ -2254,7 +2255,7 @@ function toggleEngineMode(){
 
 /* ====== FILE TREE ====== */
 function loadFileTree(){send({type:'builder_cmd',cmd:'list_tree'});}
-function loadAgents(){send({type:'builder_cmd',cmd:'list_agents'});}
+function loadOperators(){send({type:'builder_cmd',cmd:'list_operators'});}
 
 function renderTree(files){
   const exts=['.jl','.json','.toml','.py','.md','.txt','.html','.css','.js','.yaml','.yml','.env','.gitignore'];
@@ -2628,10 +2629,11 @@ chatPanel.addEventListener('drop',e=>{
   }
 });
 
-/* ====== PERSONA ====== */
-function populateAgents(names){
-  agentSelect.innerHTML=names.map(n=>'<option value="'+n+'">'+n+'</option>').join('');
-  agentSelect.value='SparkByte';
+/* ====== OPERATOR ====== */
+function populateOperators(names){
+  if(!names||!names.length)return;
+  personaSelect.innerHTML=names.map(n=>'<option value="'+n+'">'+n+'</option>').join('');
+  personaSelect.value=names.includes('SparkByte')?'SparkByte':names[0];
 }
 agentSelect.onchange=e=>send({type:'agent_change',agent:e.target.value});
 modelSelect.onchange=e=>send({type:'model_change',model:e.target.value});

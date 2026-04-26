@@ -13,7 +13,7 @@ include("JLEngine/Drift.jl")
 include("JLEngine/Memory.jl")
 include("JLEngine/Aperture.jl")
 include("JLEngine/State.jl")
-include("JLEngine/AgentManager.jl")
+include("JLEngine/OperatorManager.jl")
 include("JLEngine/Backends.jl")
 include("JLEngine/Core.jl")
 include("App.jl")
@@ -34,7 +34,7 @@ export EngineConfig,
     EmotionalAperture,
     ModulationState,
     StateManager,
-    AgentManager,
+    OperatorManager,
     AbstractBackend,
     NoopBackend,
     OllamaBackend,
@@ -46,7 +46,7 @@ export EngineConfig,
     resolve_path,
     load_engine_config,
     load_mpf_registry,
-    load_agent_file,
+    load_operator_file,
     get_llm_boot_prompt,
     score,
     current_state,
@@ -77,7 +77,7 @@ export EngineConfig,
     advisory_payload,
     export_snapshot,
     update_from_output!,
-    set_active_agent!,
+    set_active_operator!,
     apply_supervisor_bias!,
     update_dynamic_weight!,
     get_projection,
@@ -90,7 +90,7 @@ export EngineConfig,
     set_tool_backend_id!,
     sync_from_byte!,
     generate,
-    set_agent!,
+    set_operator!,
     analyze_turn!,
     record_turn!,
     run_turn!,

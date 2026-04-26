@@ -114,9 +114,16 @@ function _tts_state_for_ws(ws; create::Bool=true)
     end
 end
 
+function _tts_api_key()::String
+    # Prefer a dedicated TTS key so OPENAI_API_KEY can stay clean for chat routing
+    k = strip(get(ENV, "OPENAI_TTS_API_KEY", ""))
+    isempty(k) && (k = strip(get(ENV, "OPENAI_API_KEY", "")))
+    return k
+end
+
 function _tts_generate_audio(text::AbstractString; model::String=_tts_model(), voice::String=_tts_voice(), instructions::String=_tts_instructions())
-    api_key = strip(get(ENV, "OPENAI_API_KEY", ""))
-    isempty(api_key) && return Dict("error" => "OPENAI_API_KEY is not set.")
+    api_key = _tts_api_key()
+    isempty(api_key) && return Dict("error" => "Set OPENAI_TTS_API_KEY (or OPENAI_API_KEY) for voice.")
 
     payload = Dict{String,Any}(
         "model" => isempty(model) ? _TTS_DEFAULT_MODEL : model,
@@ -212,7 +219,7 @@ end
 
 function _queue_tts_reply!(ws, reply_text::AbstractString; turn_id::Int=0, model::AbstractString=_tts_model(), voice::AbstractString=_tts_voice())
     _tts_enabled() || return false
-    isempty(strip(get(ENV, "OPENAI_API_KEY", ""))) && return false
+    isempty(_tts_api_key()) && return false
 
     chunks = _tts_chunks(reply_text)
     isempty(chunks) && return false
