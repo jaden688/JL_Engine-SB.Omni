@@ -81,6 +81,50 @@ def get_recent_telemetry(limit: int = 20) -> str:
     return json.dumps(rows, indent=2)
 
 @mcp.tool()
+def write_memory(tag: str, key: str, content: str) -> str:
+    """Persist a memory entry (tag, key, content) to SparkByte's memory DB."""
+    from datetime import datetime
+    if not SB_DB.exists():
+        return json.dumps({"error": "sparkbyte_memory.db not found"})
+    con = sqlite3.connect(SB_DB)
+    try:
+        con.execute(
+            "INSERT INTO memory (timestamp, tag, key, content) VALUES (?, ?, ?, ?)",
+            (datetime.utcnow().isoformat(), tag, key, content),
+        )
+        con.commit()
+        return json.dumps({"ok": True, "tag": tag, "key": key})
+    finally:
+        con.close()
+
+@mcp.tool()
+async def call_forged_tool(name: str, args: dict | None = None) -> str:
+    """Invoke a runtime-forged tool (from dynamic_tools_registry.json) via SparkByte.
+
+    Example: call_forged_tool("coin_flip") or call_forged_tool("word_count", {"text": "hi there"}).
+    """
+    args_json = json.dumps(args or {})
+    prompt = (
+        f"[SYSTEM TOOL CALL] Invoke forged tool `{name}` with args {args_json}. "
+        f"Return ONLY the raw tool result, no commentary."
+    )
+    return await _ws_ask(prompt)
+
+@mcp.tool()
+def list_forged_tools_registry() -> str:
+    """List forged tools from dynamic_tools_registry.json (Julia-runtime tools)."""
+    reg = ROOT / "dynamic_tools_registry.json"
+    if not reg.exists():
+        return json.dumps({"error": "dynamic_tools_registry.json not found"})
+    return reg.read_text(encoding="utf-8")
+
+@mcp.tool()
+def list_agents() -> str:
+    """List all registered SparkByte agents with their tone and active flag."""
+    rows = _sb("SELECT name, description, tone, active FROM agents ORDER BY name")
+    return json.dumps(rows, indent=2)
+
+@mcp.tool()
 def search_julian_quarry(query: str, limit: int = 10) -> str:
     """Search Julian's code quarry."""
     rows = _jul("SELECT repo_full_name, file_path, language FROM files WHERE content LIKE ? LIMIT ?", (f"%{query}%", limit))
