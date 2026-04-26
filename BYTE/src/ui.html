@@ -1937,6 +1937,7 @@ function connect(){
       }
     }
     else if(d.type==='personas_list'){populatePersonas(d.personas);}
+    else if(d.type==='operators_list'){populateOperators(d.operators);}
     else if(d.type==='search_results'){showSearchResults(d.results,d.query);}
     else if(d.type==='settings_all_status'){
       const MAP={gemini:'apikey-status',xai:'xai-key-status',openai:'openai-key-status',cerebras:'cerebras-key-status'};
@@ -2632,6 +2633,11 @@ chatPanel.addEventListener('drop',e=>{
 function populatePersonas(names){
   personaSelect.innerHTML=names.map(n=>'<option value="'+n+'">'+n+'</option>').join('');
   personaSelect.value='SparkByte';
+}
+function populateOperators(names){
+  if(!names||!names.length)return;
+  personaSelect.innerHTML=names.map(n=>'<option value="'+n+'">'+n+'</option>').join('');
+  personaSelect.value=names.includes('SparkByte')?'SparkByte':names[0];
 }
 personaSelect.onchange=e=>send({type:'persona_change',persona:e.target.value});
 modelSelect.onchange=e=>send({type:'model_change',model:e.target.value});

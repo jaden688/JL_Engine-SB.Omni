@@ -1023,10 +1023,10 @@ function tool_browse_url(args)
         page = ctx.new_page()
         try
             page.goto(url, wait_until="domcontentloaded", timeout=20000)
-            try; page.wait_for_load_state("networkidle", timeout=5000); catch; end
+            try; page.wait_for_load_state("networkidle", timeout=5000); catch _; end
         catch e
             # retry with laxer wait
-            try; page.goto(url, wait_until="load", timeout=15000); catch; end
+            try; page.goto(url, wait_until="load", timeout=15000); catch _; end
         end
         text = pyconvert(String, page.evaluate("() => document.body.innerText"))
         final_url = pyconvert(String, page.url)
@@ -1092,8 +1092,8 @@ function tool_stealth_nav(args)
     isempty(url) && return Dict("error" => "url required")
     try
         pg = _get_stealth_page()
-        try; pg.goto(url, wait_until="domcontentloaded", timeout=22000); catch; end
-        try; pg.wait_for_load_state("networkidle", timeout=5000); catch; end
+        try; pg.goto(url, wait_until="domcontentloaded", timeout=22000); catch _; end
+        try; pg.wait_for_load_state("networkidle", timeout=5000); catch _; end
         _stealth_snapshot()
     catch e; Dict("error"=>string(e)) end
 end
@@ -1108,13 +1108,13 @@ function tool_stealth_act(args)
             x = Float64(get(args, "x", 0))
             y = Float64(get(args, "y", 0))
             pg.mouse.click(x, y)
-            try; pg.wait_for_load_state("networkidle", timeout=4000); catch; end
+            try; pg.wait_for_load_state("networkidle", timeout=4000); catch _; end
         elseif action == "back"
             pg.go_back(wait_until="domcontentloaded", timeout=10000)
-            try; pg.wait_for_load_state("networkidle", timeout=4000); catch; end
+            try; pg.wait_for_load_state("networkidle", timeout=4000); catch _; end
         elseif action == "forward"
             pg.go_forward(wait_until="domcontentloaded", timeout=10000)
-            try; pg.wait_for_load_state("networkidle", timeout=4000); catch; end
+            try; pg.wait_for_load_state("networkidle", timeout=4000); catch _; end
         elseif action == "scroll"
             dy = Float64(get(args, "dy", 300))
             pg.mouse.wheel(0, dy)
@@ -1128,10 +1128,10 @@ function tool_stealth_act(args)
         elseif action == "key"
             key = string(get(args, "key", ""))
             isempty(key) || pg.keyboard.press(key)
-            try; pg.wait_for_load_state("networkidle", timeout=4000); catch; end
+            try; pg.wait_for_load_state("networkidle", timeout=4000); catch _; end
         elseif action == "refresh"
             pg.reload(wait_until="domcontentloaded", timeout=20000)
-            try; pg.wait_for_load_state("networkidle", timeout=4000); catch; end
+            try; pg.wait_for_load_state("networkidle", timeout=4000); catch _; end
         end
         _stealth_snapshot()
     catch e; Dict("error"=>string(e)) end
