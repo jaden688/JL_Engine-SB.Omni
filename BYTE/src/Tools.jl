@@ -36,7 +36,7 @@ function _db_write_thought(context::String, thought::String, mood::String, gait:
     try
         lock(_DB_WRITE_LOCK) do
             SQLite.execute(db,
-                "INSERT INTO thoughts (timestamp, persona, context, thought, mood, gait, type, model) VALUES (?,?,?,?,?,?,?,?)",
+                "INSERT INTO thoughts (timestamp, jl_agent, context, thought, mood, gait, type, model) VALUES (?,?,?,?,?,?,?,?)",
                 (string(now()), agent, first(context, 120), first(thought, 400), mood, gait, type, model))
         end
         _session_event_count[] += 1
@@ -59,7 +59,7 @@ function _db_write_turn_snapshot(snapshot::Dict, agent::String, model::String,
         lock(_DB_WRITE_LOCK) do
             SQLite.execute(db, """
                 INSERT INTO turn_snapshots
-                (timestamp, session_id, turn_number, agent, model,
+                (timestamp, session_id, turn_number, jl_agent, model,
                  gait, rhythm_mode, rhythm_momentum,
                  aperture_mode, aperture_temp, aperture_top_p,
                  behavior_state, behavior_expressiveness, behavior_pacing, behavior_tone,
@@ -100,7 +100,7 @@ function _db_write_reasoning(context::String, reasoning::String, model::String, 
     try
         lock(_DB_WRITE_LOCK) do
             SQLite.execute(db,
-                "INSERT INTO thoughts (timestamp, persona, context, thought, mood, gait, type, model) VALUES (?,?,?,?,?,?,?,?)",
+                "INSERT INTO thoughts (timestamp, jl_agent, context, thought, mood, gait, type, model) VALUES (?,?,?,?,?,?,?,?)",
                 (string(now()), agent, first(context, 120), first(reasoning, 2000), "reasoning", "auto", "reasoning", model))
         end
         _session_event_count[] += 1
@@ -115,7 +115,7 @@ function _db_write_tool_usage(name::String, args_json::String, result_json::Stri
     try
         lock(_DB_WRITE_LOCK) do
             SQLite.execute(db,
-                "INSERT INTO tool_usage_log (timestamp, tool_name, args_json, result_json, duration_ms, persona, session_id) VALUES (?,?,?,?,?,?,?)",
+                "INSERT INTO tool_usage_log (timestamp, tool_name, args_json, result_json, duration_ms, jl_agent, session_id) VALUES (?,?,?,?,?,?,?)",
                 (string(now()), name, first(args_json, 500), first(result_json, 500), elapsed_ms, agent, isdefined(@__MODULE__, :_session_id) ? string(getfield(@__MODULE__, :_session_id)) : "unknown"))
             SQLite.execute(db, "UPDATE tools SET call_count = call_count + 1, last_used = ? WHERE name = ?", (string(now()), name))
         end

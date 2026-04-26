@@ -86,7 +86,7 @@ function log_event(event::String, data::Dict{String,Any} = Dict{String,Any}())
             agent = string(get(data, "agent", ""))
             lock(_DB_WRITE_LOCK) do
                 SQLite.execute(_telem_db[],
-                    "INSERT INTO telemetry (timestamp, session_id, event, turn_number, model, persona, data_json) VALUES (?,?,?,?,?,?,?)",
+                    "INSERT INTO telemetry (timestamp, session_id, event, turn_number, model, jl_agent, data_json) VALUES (?,?,?,?,?,?,?)",
                     (ts, _session_id, event, Int(_turn_counter[]), model, agent, line))
             end
         catch e

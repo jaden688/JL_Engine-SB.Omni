@@ -63,7 +63,7 @@ Entry: python -m julian_metamorph.cli | UI: http://127.0.0.1:8765
 """.strip()
 
 @mcp.resource("sparkbyte://agents")
-def agents() -> str:
+def agents_resource() -> str:
     """All indexed agents with their tone and boot prompt summary."""
     rows = _sb("SELECT name, tone, description, substr(boot_prompt,1,300) as boot_prompt FROM personas ORDER BY name")
     return json.dumps(rows, indent=2)
@@ -76,7 +76,7 @@ def get_engine_state() -> str:
     drift pressure, stability score, model, agent.
     """
     rows = _sb("""
-        SELECT timestamp, persona, model, gait, rhythm_mode, aperture_mode,
+        SELECT timestamp, jl_agent, model, gait, rhythm_mode, aperture_mode,
                aperture_temp, behavior_state, behavior_expressiveness,
                drift_pressure, advisory_bias, advisory_emotional_drift, advisory_msg
         FROM turn_snapshots ORDER BY id DESC LIMIT 1
@@ -94,9 +94,9 @@ def get_thoughts(limit: int = 10, thought_type: str = "diary") -> str:
     """
     limit = min(limit, 50)
     if thought_type == "all":
-        rows = _sb("SELECT timestamp, persona, type, mood, thought FROM thoughts ORDER BY id DESC LIMIT ?", (limit,))
+        rows = _sb("SELECT timestamp, jl_agent, type, mood, thought FROM thoughts ORDER BY id DESC LIMIT ?", (limit,))
     else:
-        rows = _sb("SELECT timestamp, persona, type, mood, thought FROM thoughts WHERE type=? ORDER BY id DESC LIMIT ?", (thought_type, limit))
+        rows = _sb("SELECT timestamp, jl_agent, type, mood, thought FROM thoughts WHERE type=? ORDER BY id DESC LIMIT ?", (thought_type, limit))
     return json.dumps(rows, indent=2)
 
 @mcp.tool()
@@ -197,7 +197,7 @@ def get_knowledge(domain: str = "", limit: int = 20) -> str:
 def _register_agent_tools():
     try:
         personas = _sb("SELECT name, description FROM personas")
-        for p in agents:
+        for p in personas:
             p_name = p['name']
             safe_name = f"ask_agent_{''.join(c if c.isalnum() else '_' for c in p_name.lower())}"
             desc = f"Delegate a task to the {p_name} agent. {p.get('description', '')}"[:250]
