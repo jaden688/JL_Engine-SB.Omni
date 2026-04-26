@@ -29,6 +29,21 @@ SKILL_MD = Path(os.environ.get("JULIAN_SKILL", str(Path.home() / ".claude" / "sk
 _MCP_PORT = int(os.environ.get("MCP_PORT", "8083"))
 _USE_HTTP  = "--http" in sys.argv or os.environ.get("MCP_TRANSPORT", "").lower() in ("sse", "http")
 _MCP_HOST  = "0.0.0.0" if _USE_HTTP else "127.0.0.1"
+_MAX_BYTES = int(os.environ.get("MCP_MAX_RESPONSE_BYTES", "60000"))
+_WS_TIMEOUT = float(os.environ.get("SPARKBYTE_WS_TIMEOUT", "60"))
+
+def _cap(payload: str, kind: str = "result") -> str:
+    """Truncate large JSON payloads so MCP clients don't choke."""
+    if len(payload) <= _MAX_BYTES:
+        return payload
+    return json.dumps({
+        "truncated": True,
+        "kind": kind,
+        "original_bytes": len(payload),
+        "max_bytes": _MAX_BYTES,
+        "preview": payload[:_MAX_BYTES],
+        "hint": "Narrow your query (use tag/key filters or smaller limit), or raise MCP_MAX_RESPONSE_BYTES.",
+    }, indent=2)
 
 mcp = FastMCP("sparkbyte", host=_MCP_HOST, port=_MCP_PORT)
 
@@ -70,9 +85,10 @@ def list_forged_tools() -> str:
 
 @mcp.tool()
 def query_memory(tag: str = "", key: str = "", limit: int = 20) -> str:
-    """Query persistent memory."""
+    """Query persistent memory. Output capped at MCP_MAX_RESPONSE_BYTES (default 60kB)."""
+    limit = max(1, min(int(limit), 200))
     rows = _sb("SELECT tag, key, content FROM memory WHERE tag LIKE ? AND key LIKE ? LIMIT ?", (f"%{tag}%", f"%{key}%", limit))
-    return json.dumps(rows, indent=2)
+    return _cap(json.dumps(rows, indent=2), kind="memory")
 
 @mcp.tool()
 def get_recent_telemetry(limit: int = 20) -> str:
@@ -116,7 +132,7 @@ def list_forged_tools_registry() -> str:
     reg = ROOT / "dynamic_tools_registry.json"
     if not reg.exists():
         return json.dumps({"error": "dynamic_tools_registry.json not found"})
-    return reg.read_text(encoding="utf-8")
+    return _cap(reg.read_text(encoding="utf-8"), kind="forged_registry")
 
 @mcp.tool()
 def list_agents() -> str:
@@ -133,7 +149,7 @@ def search_julian_quarry(query: str, limit: int = 10) -> str:
 # ── SparkByte WebSocket messenger ─────────────────────────────────────────────
 _SB_WS = os.environ.get("SPARKBYTE_WS", "ws://127.0.0.1:8081")
 
-async def _ws_ask(prompt: str, timeout: float = 60.0) -> str:
+async def _ws_ask(prompt: str, timeout: float | None = None) -> str:
     """Async WS call to SparkByte — must be awaited inside an async context."""
     # SparkByte WS protocol — message types observed:
     #   "generation_started" — engine starting, ignore
@@ -146,6 +162,8 @@ async def _ws_ask(prompt: str, timeout: float = 60.0) -> str:
     REPLY_TYPES  = {"spark"}
     ERROR_TYPES  = {"error"}
     IGNORE_TYPES = {"generation_started", "ui_update", "tool", "engine_state", "telemetry_update"}
+    if timeout is None:
+        timeout = _WS_TIMEOUT
     try:
         async with websockets.connect(_SB_WS, open_timeout=5) as ws:
             payload = json.dumps({"type": "chat", "text": prompt, "id": str(uuid.uuid4())})
@@ -190,8 +208,8 @@ def _register_agent_tools():
                 return _delegate_to_agent
 
             mcp.add_tool(make_tool(p_name), name=safe_name, description=desc)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[sparkbyte-mcp] agent tool registration skipped: {e}", file=sys.stderr, flush=True)
 
 _register_agent_tools()
 
