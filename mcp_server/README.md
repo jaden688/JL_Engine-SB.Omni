@@ -37,7 +37,8 @@ Two integration paths into the engine:
 
 ### Requirements
 - Python 3.10+
-- `mcp`, `websockets` (install via the parent project's environment)
+- Install pinned deps: `pip install -r mcp_server/requirements.txt`
+  (`mcp`, `websockets`, plus `uvicorn` for HTTP-mode auth)
 - `sparkbyte_memory.db` at repo root (read-only access is fine)
 - (Optional, for live tools) SparkByte WS server running on `127.0.0.1:8081`
 
@@ -61,6 +62,13 @@ python mcp_server/http_server.py
 |---|---|---|
 | `MCP_TRANSPORT` | `stdio` | Set to `sse` or `http` to switch transport |
 | `MCP_PORT` | `8083` | Port for SSE mode |
+| `MCP_BIND` | `127.0.0.1` | Bind address. Non-loopback requires the ack + auth (see Security) |
+| `MCP_BIND_ACK` | _(unset)_ | Set to `I_understand_no_builtin_auth` to allow non-loopback bind |
+| `MCP_AUTH_TOKEN` | _(unset)_ | Bearer token required for non-loopback HTTP/SSE (≥16 chars) |
+| `MCP_WS_CONCURRENCY` | `4` | Max in-flight WS round-trips |
+| `MCP_ALLOW_EXTERNAL_PATHS` | `0` | `1` skips path-sandbox check on JULIAN_DB / JULIAN_SKILL |
+| `MCP_ALLOW_REMOTE_WS` | `0` | `1` allows non-loopback `SPARKBYTE_WS` |
+| `MCP_LOG_LEVEL` | `INFO` | stderr log level (DEBUG/INFO/WARNING/ERROR) |
 | `SPARKBYTE_WS` | `ws://127.0.0.1:8081` | Where the live engine is listening |
 | `SPARKBYTE_WS_TIMEOUT` | `60` | Seconds to wait for a `spark` reply |
 | `MCP_MAX_RESPONSE_BYTES` | `60000` | Cap for `query_memory` / `list_forged_tools_registry` output |
@@ -152,6 +160,25 @@ Internally this round-trips through `ask_sparkbyte` over WS, so the engine must 
 - Agent passthrough tools are generated at import time from the `agents` table — silent failure if the DB is missing.
 
 ---
+
+## Security
+
+Default posture is **localhost-only, no auth**. To expose this server beyond your machine:
+
+1. Set `MCP_BIND=0.0.0.0` (or a specific NIC IP).
+2. Set `MCP_BIND_ACK=I_understand_no_builtin_auth` — the server refuses to start otherwise.
+3. Set `MCP_AUTH_TOKEN` to a random ≥16-char string. Clients must send `Authorization: Bearer <token>`.
+4. Install `uvicorn` (already in `requirements.txt`) — needed when auth is on.
+5. **Front it with TLS** (Caddy, nginx, Cloudflare). The bundled auth is a Bearer check, not transport security.
+
+Other guardrails enforced by default:
+
+- `JULIAN_DB` and `JULIAN_SKILL` paths must resolve under the repo root or `$HOME`. Override with `MCP_ALLOW_EXTERNAL_PATHS=1`.
+- `SPARKBYTE_WS` must be loopback. Override with `MCP_ALLOW_REMOTE_WS=1`.
+- WS round-trips are bounded by `MCP_WS_CONCURRENCY` (default 4) — prevents fan-out DoS.
+- Caller input to `ask_sparkbyte` / `ask_agent_*` is sanitized (control chars + `[SYSTEM ...]` markers stripped, 4kB cap).
+- `call_forged_tool` strips non-alphanumeric chars from the tool `name` and JSON-validates `args` before dispatch.
+- All read-only DB tools open with `mode=ro`. Only `write_memory` opens RW.
 
 ## Known limitations
 

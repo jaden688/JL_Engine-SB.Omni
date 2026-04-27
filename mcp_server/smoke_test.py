@@ -25,7 +25,7 @@ def _check(name: str, fn, *args, **kwargs):
     try:
         out = fn(*args, **kwargs)
         if asyncio.iscoroutine(out):
-            out = asyncio.get_event_loop().run_until_complete(out)
+            out = asyncio.run(out)
         assert isinstance(out, str) and out, f"{name} returned empty/non-str"
         # Should be JSON-decodable for DB tools (WS replies may be plain text).
         try:
