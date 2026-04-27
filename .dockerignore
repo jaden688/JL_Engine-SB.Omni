@@ -51,3 +51,22 @@ generate_bass.py
 cyber_grid*.png
 sparkbyte_*.png
 sparkbyte_art.png
+
+# Local/runtime artifacts
+.env
+.env.*.local
+*.log
+*.out.log
+*.err.log
+*.jsonl
+*.db
+*.sqlite
+*.sqlite3
+__pycache__/
+*.pyc
+.vs/
+data/images/
+boot_stdout.txt
+boot_stderr.txt
+live_boot.txt
+full_telemetry.jsonl

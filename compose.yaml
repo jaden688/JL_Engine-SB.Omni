@@ -20,7 +20,7 @@ services:
       SPARKBYTE_STATE_DIR: /app/runtime
       A2A_HOST: 0.0.0.0
       A2A_PORT: 8082
-      A2A_PUBLIC_URL: ${A2A_PUBLIC_URL:-http://localhost:8081}
+      A2A_PUBLIC_URL: ${A2A_PUBLIC_URL:-http://localhost:8082}
       # Optional: require Bearer token on A2A (set in .env)
       A2A_API_KEY: ${A2A_API_KEY:-}
       # Julian curiosity loop: default 3600s (hourly). Set -1 to disable.

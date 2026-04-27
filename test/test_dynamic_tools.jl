@@ -166,7 +166,7 @@ end
 # result: {"error":"MethodError(JLEngine.BYTE.var\"#tool_run_health_check\"(), (Dict{String, Any}(),), 0x00000000000097ea)"}
 # -- tool_run_health_check | 2026-04-14 03:03:53 | FAIL --
 # args:   {}
-# result: {"api_key_present":true,"config_file_exists":false,"endpoint_reachable":false,"error":"HTTP.Exceptions.StatusError(404, \"POST\", \"/v1/models/gemini-pro:generateContent?key=AIzaSyB2QnvJz1__19M03WMV9KDyYIdiJbcJtMY\", HTTP.Messages.Response:\n\"\"\"\nHTTP/1.1 404 Not Found\r\nVary: Origin, X-Origin, Referer\r\nContent-Type: application/json; charset=UTF-8\r\nContent-Encoding: gzip\r\nDate: Tue, 14 Apr 2026 09:03:56 GMT\r\nServer: scaffolding on HTTPServer2\r\nX-XSS-Protection: 0\r\nX-Frame-Options: SAMEORIGIN\r\nX-Content-Type-Options: nosniff\r\nServer-Timing: gfet4t7; dur=128\r\nAlt-Svc: h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000\r\nTransfer-Encoding: chunked\r\n\r\n{\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"models/gemini-pro is not found for API version v1, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.\",\n    \"status\": \"NOT_FOUND\"\n  }\n}\n\"\"\")"}
+# result: {"api_key_present":true,"config_file_exists":false,"endpoint_reachable":false,"error":"HTTP.Exceptions.StatusError(404, \"POST\", \"/v1/models/gemini-pro:generateContent?key=<REDACTED_GEMINI_API_KEY>\", HTTP.Messages.Response:\n\"\"\"\nHTTP/1.1 404 Not Found\r\nVary: Origin, X-Origin, Referer\r\nContent-Type: application/json; charset=UTF-8\r\nContent-Encoding: gzip\r\nDate: Tue, 14 Apr 2026 09:03:56 GMT\r\nServer: scaffolding on HTTPServer2\r\nX-XSS-Protection: 0\r\nX-Frame-Options: SAMEORIGIN\r\nX-Content-Type-Options: nosniff\r\nServer-Timing: gfet4t7; dur=128\r\nAlt-Svc: h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000\r\nTransfer-Encoding: chunked\r\n\r\n{\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"models/gemini-pro is not found for API version v1, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.\",\n    \"status\": \"NOT_FOUND\"\n  }\n}\n\"\"\")"}
 # -- tool_run_gemini_health_check | 2026-04-14 03:04:03 | FAIL --
 # args:   {}
 # result: {"api_key_present":true,"config_file_exists":false,"endpoint_reachable":true,"error":""}
@@ -224,3 +224,45 @@ end
 # -- tool_debug_prompt | 2026-04-24 02:31:58 | FAIL --
 # args:   {}
 # result: {"error":"UndefVarError(:JLEngine, 0x0000000000009a5e, JLEngine.BYTE)"}
+# -- tool_bridge_to_chatgpt | 2026-04-26 13:11:09 | FAIL --
+# args:   {}
+# result: {"error":"KeyError(\"message\")"}
+# -- tool_bridge_to_chatgpt | 2026-04-26 13:11:13 | PASS --
+# args:   {}
+# result: {"message":"Message written to bridge\\to_chatgpt.txt. Waiting for response in bridge\\from_chatgpt.txt.","status":"success"}
+# -- tool_orchestrate_task | 2026-04-26 13:21:55 | FAIL --
+# args:   {}
+# result: {"error":"KeyError(\"task\")"}
+# -- tool_orchestrate_task | 2026-04-26 13:21:57 | PASS --
+# args:   {}
+# result: {"message":"Missing task or target.","status":"error"}
+# -- tool_mcp_request | 2026-04-26 15:46:51 | FAIL --
+# args:   {}
+# result: {"error":"server_cmd is required"}
+# -- tool_mcp_request | 2026-04-26 15:46:54 | FAIL --
+# args:   {}
+# result: {"error":"server_cmd is required"}
+# -- tool_mcp_request | 2026-04-26 15:46:57 | FAIL --
+# args:   {}
+# result: {"error":"server_cmd is required"}
+# -- tool_mcp_request | 2026-04-26 15:47:00 | FAIL --
+# args:   {}
+# result: {"error":"server_cmd is required"}
+# -- tool_coin_flip | 2026-04-26 16:34:56 | PASS --
+# args:   {}
+# result: {"result":"heads"}
+# -- tool_word_count | 2026-04-26 16:34:57 | PASS --
+# args:   {}
+# result: {"count":0}
+# -- tool_treasure_hunt | 2026-04-26 16:47:10 | PASS --
+# args:   {}
+# result: {"message":"Treasure hunt initiated! Searching for gold...","status":"success"}
+# -- tool_coin_flip | 2026-04-26 17:32:35 | PASS --
+# args:   {}
+# result: {"result":"tails"}
+# -- tool_coin_flip | 2026-04-26 17:32:37 | PASS --
+# args:   {}
+# result: {"result":"heads"}
+# -- tool_coin_flip | 2026-04-26 17:32:46 | PASS --
+# args:   {}
+# result: {"result":"tails"}
