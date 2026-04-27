@@ -37,6 +37,7 @@ end
 
 @testset "A2A protocol" begin
     db = SQLite.DB(":memory:")
+    _a2a_init_db!(db)
     auth_headers = _a2a_test_auth_headers()
 
     @test _a2a_proto_role("user") == "ROLE_USER"

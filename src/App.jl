@@ -137,6 +137,10 @@ function _open_memory_db(root::String)
         user_msg_len INTEGER,
         reply_len INTEGER,
         elapsed_ms INTEGER)""")
+    SQLite.execute(db, """CREATE TABLE IF NOT EXISTS runtime_state (
+        key TEXT PRIMARY KEY,
+        value TEXT,
+        updated_at TEXT)""")
     _a2a_init_db!(db)
     return db
 end
@@ -687,6 +691,20 @@ function app_main(; host::String=get(ENV, "SPARKBYTE_HOST", DEFAULT_HOST),
     _browser_stack_ref[] = browser_stack
     _cleanup_done[] = false
     BYTE.init(db, browser_stack.browser_context, root)
+
+    # Restore BYTE runtime state (model) from previous session
+    try
+        saved = DataFrames.DataFrame(SQLite.DBInterface.execute(db,
+            "SELECT value FROM runtime_state WHERE key='current_model'"))
+        if DataFrames.nrow(saved) > 0
+            restored = string(saved[1, :value])
+            BYTE.set_current_model!(restored)
+            @info "Restored model from previous session" model=restored
+        end
+    catch e
+        @warn "Failed to restore runtime state from DB" exception=(e, catch_backtrace())
+    end
+
     try
         _seed_self_context!(db, root)
     catch e

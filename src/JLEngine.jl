@@ -18,6 +18,10 @@ include("JLEngine/Backends.jl")
 include("JLEngine/Core.jl")
 include("App.jl")
 
+const TOOL_MAP = BYTE.TOOL_MAP
+const TOOLS_SCHEMA = BYTE.TOOLS_SCHEMA
+const tool_reddit_submit = BYTE.tool_reddit_submit
+
 export EngineConfig,
     GearModifiers,
     MPFProfile,
@@ -98,6 +102,9 @@ export EngineConfig,
     app_main,
     julia_main,
     runtime_root,
-    state_root
+    state_root,
+    TOOL_MAP,
+    TOOLS_SCHEMA,
+    tool_reddit_submit
 
 end

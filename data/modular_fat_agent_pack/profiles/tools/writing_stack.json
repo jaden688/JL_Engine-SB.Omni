@@ -1,5 +1,5 @@
 {
-  "web": false,
+  "web": true,
   "writing_tools": true,
   "editing_tools": true
 }

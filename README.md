@@ -1,342 +1,227 @@
 # JL Engine — SparkByte Omni
 
-> A Julia-native AI agent engine with a real-time behavioral control layer. Not a chatbot wrapper — a middleware system that models conversation state as a dynamic behavioral machine before any LLM ever sees your message.
+A Julia-native AI operator engine with a real-time behavioral control layer. Not a chatbot wrapper — a middleware system that models conversation state as a dynamic behavioral machine before any LLM ever sees your message.
 
-**Live UI:** `http://127.0.0.1:8081` &nbsp;|&nbsp; **Entry:** `julia sparkbyte.jl` &nbsp;|&nbsp; **Repo:** `github.com/jaden688/JL_Engine-SB.Omni`
+**Live UI:** `http://127.0.0.1:8081` &nbsp;|&nbsp; **A2A:** `http://127.0.0.1:8082` &nbsp;|&nbsp; **Entry:** `julia sparkbyte.jl` &nbsp;|&nbsp; **License:** MIT
 
 ---
 
-## Architecture Overview
+## What it is
 
-```mermaid
-graph TB
-    subgraph USER["User Layer"]
-        UI["Browser UI\nWebSocket :8081"]
-        CLI["AI CLI\nClaude / Cursor / Gemini / Codex / Windsurf"]
-    end
+- **BYTE** — agentic shell. WebSocket server, tool dispatch, agentic loop, runtime tool forging.
+- **JLEngine** — per-turn pipeline that scores signals, runs a 5×4 behavior state machine, computes drift pressure, sets rhythm and emotional aperture, and emits an advisory payload before the LLM is invoked.
+- **A2A server** — JSON-RPC 2.0 endpoint on port 8082 for agent-to-agent traffic. Bearer auth, fail-closed on blank env. Built-in usage ledger and pricing knobs.
+- **MCP server** — Python bridge (`mcp_server/`) exposing engine state, memory, telemetry, forged-tool listing, and per-operator `ask_*` passthroughs to any MCP-compatible CLI (Claude Desktop, Cursor, Windsurf, Codex, Gemini CLI).
 
-    subgraph BYTE["BYTE — Agentic Shell"]
-        WS["WebSocket Server"]
-        LOOP["Agentic Loop\nLLM → Tools → Loop"]
-        FORGE["forge_new_tool\nLive Julia Eval"]
-        TOOLS["Tool Dispatch\n14 built-in + dynamic"]
-    end
+The MCP bridge is the local/dev surface. The A2A API is the paid surface.
 
-    subgraph ENGINE["JLEngine Core"]
-        SIG["SignalScorer"]
-        BSM["BehaviorStateMachine\n5×4 Grid"]
-        DRIFT["DriftPressureSystem\n0.0–1.0"]
-        RHYTHM["RhythmEngine\nflip/flop/trot"]
-        APE["EmotionalAperture\nOPEN/FOCUSED/TIGHT"]
-        MEM["HybridMemorySystem"]
-        PERSONA["AgentManager"]
-        STATE["StateManager\nStability + Advisory"]
-    end
+---
 
-    subgraph STORAGE["Persistence"]
-        DB[("sparkbyte_memory.db\nSQLite")]
-        DYN["dynamic_tools.jl\nForged Tools"]
-    end
+## Quick start
 
-    subgraph MCP["MCP Bridge"]
-        MCPSRV["mcp_server/server.py\nstdio — read-only"]
-    end
+```bash
+# Local
+julia sparkbyte.jl
+# UI:      http://127.0.0.1:8081
+# A2A:     http://127.0.0.1:8082/.well-known/agent.json
+# MCP:     stdio (registered via Claude Desktop config) or http on :8083
 
-    UI --> WS
-    CLI --> MCPSRV
-    WS --> LOOP
-    LOOP --> ENGINE
-    ENGINE --> LOOP
-    LOOP --> TOOLS
-    FORGE --> DYN
-    TOOLS --> FORGE
-    ENGINE --> DB
-    TOOLS --> DB
-    MCPSRV --> DB
+# Docker
+docker compose up -d
 ```
 
+Required env (most are optional — the engine boots without keys, just no LLM):
+
+```bash
+GEMINI_API_KEY=...
+OPENAI_API_KEY=...
+XAI_API_KEY=...
+SPARKBYTE_HOST=127.0.0.1     # 0.0.0.0 in Docker
+SPARKBYTE_PORT=8081
+A2A_PORT=8082
+A2A_PUBLIC_URL=http://localhost:8082
+A2A_API_KEY=...              # required for A2A auth
+A2A_ADMIN_KEY=...            # required for billing/key CRUD
+A2A_BILLING_ENFORCE=false    # flip to true for paid mode
+```
+
+See `.env.example` for the full set including pricing rates and Stripe URLs.
+
 ---
 
-## Engine Turn Pipeline
+## Operators
 
-Every message goes through this pipeline before the LLM responds:
+Operators run everything; they call agents (tools) to carry out tasks. The active operator shapes prompt, voice, and tool-selection bias.
+
+| Operator | Vibe | Drive |
+|---|---|---|
+| **SparkByte** | Sassy, fast-talking junior engineer | Creative + Technical |
+| **Slappy** | Chaotic gremlin energy | Chaos |
+| **The Gremlin** | Pure chaos builder | Destruction → Creation |
+| **Temporal** | Analytical, temporal/quantum reasoning | Logic |
+| **Supervisor** | Grounding, safe-mode helper | Stability |
+
+Switch in chat: `/gear SparkByte` &nbsp;|&nbsp; In code: `set_operator!(engine, "SparkByte")`
+
+---
+
+## Per-turn pipeline
+
+Every message hits this pipeline before any LLM call:
 
 ```mermaid
 flowchart LR
     MSG["User Message"] --> SIG
-
-    subgraph PIPELINE["JLEngine — Per Turn"]
-        SIG["SignalScorer\nsentiment · arousal · pace\nconfusion · intent · memory density"]
-        BSM["BehaviorStateMachine\n5 intensity × 4 control\n= 20 named states"]
-        DRIFT["DriftPressure\n0.0 → 1.0\nhow far from agent alignment"]
-        RHYTHM["RhythmEngine\nflip · flop · trot\nresponse cadence"]
-        APE["EmotionalAperture\nOPEN · FOCUSED · TIGHT\nsets LLM temp + top_p"]
-        STATE["StateManager\nstability · advisory payload\ngating_bias · emotional_drift"]
+    subgraph PIPELINE["JLEngine — per turn"]
+      SIG["SignalScorer<br/>sentiment · arousal · pace<br/>confusion · intent · memory density"]
+      BSM["BehaviorStateMachine<br/>5 intensity × 4 control"]
+      DRIFT["DriftPressure 0.0 → 1.0"]
+      RHYTHM["RhythmEngine<br/>flip · flop · trot"]
+      APE["EmotionalAperture<br/>OPEN · FOCUSED · TIGHT<br/>(temp + top_p)"]
+      STATE["StateManager<br/>stability · advisory"]
     end
-
     SIG --> BSM --> DRIFT --> RHYTHM --> APE --> STATE
-
-    STATE --> PROMPT["Shaped Prompt\n+ memory + agent + advisory"]
-    PROMPT --> LLM["LLM Backend\nGemini · Ollama · OpenAI · XAI"]
+    STATE --> PROMPT["Shaped Prompt<br/>+ memory + operator + advisory"]
+    PROMPT --> LLM["LLM Backend"]
     LLM --> RESPONSE["Response"]
 ```
 
+The 5×4 behavior grid yields 20 named states across `Surge / High / Mid / Low` × `Disciplined / Balanced / Expressive / Chaotic`, plus a `Dormant` floor.
+
 ---
 
-## Behavioral State Grid
+## Tool system
 
-SparkByte's behavior is modeled as a 5×4 grid — intensity vs control:
+Built-ins (subset): `read_file`, `write_file`, `list_files`, `run_command`, `get_os_info`, `bluetooth_devices`, `send_sms`, `execute_code` (Julia + Python), `forge_new_tool`, `github_pillage`, `browse_url` (Playwright), `remember`, `recall`, `metamorph` (self-repair).
 
-```mermaid
-quadrantChart
-    title Behavior State Grid (intensity vs control)
-    x-axis Disciplined --> Chaotic
-    y-axis Dormant --> Surge
-    quadrant-1 Expressive Chaos
-    quadrant-2 Focused Surge
-    quadrant-3 Calm Control
-    quadrant-4 Loose Low Energy
-    Surge-Disciplined: [0.15, 0.95]
-    Surge-Balanced: [0.45, 0.92]
-    Surge-Expressive: [0.72, 0.88]
-    Surge-Chaotic: [0.92, 0.85]
-    High-Disciplined: [0.15, 0.72]
-    High-Balanced: [0.45, 0.70]
-    High-Expressive: [0.72, 0.68]
-    High-Chaotic: [0.92, 0.65]
-    Mid-Disciplined: [0.15, 0.50]
-    Mid-Balanced: [0.45, 0.48]
-    Mid-Expressive: [0.72, 0.46]
-    Mid-Chaotic: [0.92, 0.44]
-    Low-Disciplined: [0.15, 0.28]
-    Low-Balanced: [0.45, 0.26]
-    Low-Expressive: [0.72, 0.24]
-    Low-Chaotic: [0.92, 0.22]
-    Dormant: [0.45, 0.05]
+**`forge_new_tool`** is the self-extension primitive: the LLM emits Julia source, BYTE evals it expression-by-expression into a live module, runs a smoke test via `Base.invokelatest`, and on success persists it to `dynamic_tools.jl` plus the `tools` table. Failures bubble back as `forge_broken: true` so the loop can re-forge.
+
+---
+
+## A2A server (port 8082)
+
+JSON-RPC 2.0 over HTTP. Spec-coverage: `message/send`, `message/stream`, `tasks/get|cancel|resubscribe`, push-notification config CRUD, extended agent card, billing/usage.
+
+**Routes:**
+- `GET /.well-known/agent.json` — agent card (discovery)
+- `GET /.well-known/agent-card.json` — A2A 1.x card
+- `POST /` — JSON-RPC 2.0 task handler
+- `GET /tasks/:id` — task status
+- `GET /health` — health check
+
+**Auth:** Bearer token. Fail-closed — blank-env deploys return 503 unless you opt in via `A2A_ALLOW_PUBLIC=true`.
+
+### Billing
+
+SQLite-backed (`a2a_accounts` + `a2a_usage_ledger`). Per-request char counts, tool-call counts, estimated price. Pricing knobs: `A2A_PRICE_PER_1K_REQUESTS`, `A2A_PRICE_PER_1K_INPUT_CHARS`, `A2A_PRICE_PER_1K_OUTPUT_CHARS`, `A2A_PRICE_PER_TOOL_CALL`. Free-tier (`A2A_FREE_TIER_DAILY_REQUESTS`) and per-minute rate limit (`A2A_MAX_REQUESTS_PER_MINUTE`).
+
+RPC methods:
+- `billing/status` — subscription + usage summary
+- `usage/get` — usage window (1h, 24h, 7d, 30d, lifetime)
+- `billing/key/create` — admin-only, mints an access key
+- `billing/key/update` / `billing/link` — admin-only, flip subscription state
+- `billing/checkout` — returns hosted Stripe payment link
+- `billing/portal` — returns hosted Stripe customer portal link
+
+> ⚠️ **No Stripe webhook is wired yet.** After payment, an admin must call `billing/key/update` with `subscription_status: "active"` to activate the key. Auto-activation via `checkout.session.completed` is the next billing milestone.
+
+---
+
+## MCP server
+
+Python (`mcp_server/server.py`). Two transports: stdio (Claude Desktop-style) and streamable-http on port 8083 (`mcp_server/http_server.py`).
+
+**Tools (read):** `get_engine_state`, `list_forged_tools`, `list_forged_tools_registry`, `query_memory`, `get_recent_telemetry`, `list_agents`, `search_julian_quarry`.
+
+**Tools (write/active):** `write_memory`, `ask_sparkbyte`, `call_forged_tool`, plus dynamic `ask_<operator>_*` tools generated per registered operator.
+
+**Hardening:**
+- Bearer auth on the HTTP transport (`MCP_AUTH_TOKEN`)
+- Refuses non-loopback bind without explicit `MCP_BIND_ACK=I_understand_no_builtin_auth` + token ≥ 16 chars
+- Path sandbox: every fs path resolves under repo root or `$HOME` unless opted out
+- WebSocket sandbox: only the local SparkByte engine
+- Concurrency cap (`asyncio.Semaphore`)
+- Prompt-injection sanitization (strips control chars + `[SYSTEM ...]` markers)
+- Output truncation (`MCP_MAX_RESPONSE_BYTES`)
+
+Smoke test: `python mcp_server/smoke_test.py` (7/7 DB-tool tests, optional WS tests with `RUN_WS=1`).
+
+---
+
+## Project layout
+
+```
+JL_Engine-SB.Omni/
+├── sparkbyte.jl                # Entry point
+├── a2a_server.jl               # A2A HTTP / JSON-RPC server
+├── a2a_billing.jl              # Accounts, usage ledger, Stripe glue
+├── compose.yaml · Dockerfile   # Container build
+├── dynamic_tools.jl            # Runtime-forged tools (auto-generated)
+│
+├── BYTE/src/
+│   ├── BYTE.jl                 # WebSocket server, agentic loop, forge
+│   ├── Tools.jl · Schema.jl    # Tool implementations + LLM schemas
+│   └── Telemetry.jl · ui.html
+│
+├── src/JLEngine/
+│   ├── Core.jl                 # Per-turn orchestration
+│   ├── Signals.jl · Behavior.jl
+│   ├── Drift.jl · Rhythm.jl · Aperture.jl
+│   ├── Memory.jl · State.jl
+│   ├── AgentManager.jl · Backends.jl
+│   └── MPF.jl · Types.jl
+│
+├── mcp_server/
+│   ├── server.py · http_server.py
+│   ├── smoke_test.py · README.md
+│   └── requirements.txt
+│
+├── web/                        # Next.js marketing/control surface
+├── data/agents/                # Operator profiles (Operators.mpf.json + fat JSONs)
+├── test/                       # Julia + A2A protocol tests
+└── .github/workflows/ci.yml    # MCP smoke + Next.js build + Julia tests
 ```
 
 ---
 
-## Tool System
-
-```mermaid
-graph LR
-    subgraph BUILTIN["Built-in Tools (14)"]
-        RF["read_file"]
-        WF["write_file"]
-        LF["list_files"]
-        RC["run_command"]
-        OS["get_os_info"]
-        BT["bluetooth_devices"]
-        SMS["send_sms"]
-        EC["execute_code\nJulia · Python"]
-        FNT["forge_new_tool ⭐"]
-        GP["github_pillage"]
-        BU["browse_url\nPlaywright"]
-        REM["remember"]
-        REC["recall"]
-        META["metamorph\nself-repair"]
-    end
-
-    subgraph DYNAMIC["Dynamic Tools (forged at runtime)"]
-        D1["tool_read_mystic_format"]
-        D2["tool_python_web_scout"]
-        D3["tool_live_dashboard"]
-        D4["tool_self_audit"]
-        D5["tool_greet_user"]
-        DN["... + any tool SparkByte forges"]
-    end
-
-    FNT -->|"eval into live module\npersists to dynamic_tools.jl"| DYNAMIC
-```
-
----
-
-## forge_new_tool — Self-Extension Flow
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant LLM
-    participant BYTE
-    participant Julia as Julia Runtime
-    participant DB as sparkbyte_memory.db
-
-    User->>LLM: "Build me a tool that does X"
-    LLM->>BYTE: forge_new_tool(name, code, description)
-    BYTE->>Julia: per-expression eval loop (skips using/import)
-    Julia-->>BYTE: function registered in module
-    BYTE->>Julia: live test via Base.invokelatest
-    alt test passes
-        BYTE->>DB: persist to tools table
-        BYTE->>Julia: write to dynamic_tools.jl
-        BYTE-->>LLM: success + test result
-    else test fails
-        BYTE-->>LLM: forge_broken: true — re-forge with fix
-    end
-    LLM-->>User: tool live, confirmed working
-```
-
----
-
-## MCP Server — AI CLI Bridge
-
-```mermaid
-graph LR
-    subgraph CLIENTS["AI CLI Clients"]
-        CC["Claude Code"]
-        CUR["Cursor"]
-        WS["Windsurf"]
-        GEM["Gemini CLI"]
-        COD["Codex"]
-    end
-
-    subgraph MCP["mcp_server/server.py\nstdio transport · read-only"]
-        T1["get_engine_state"]
-        T2["get_thoughts"]
-        T3["list_forged_tools"]
-        T4["query_memory"]
-        T5["get_telemetry"]
-        T6["search_julian_quarry"]
-        T7["get_knowledge"]
-        R1["sparkbyte://skill"]
-        R2["sparkbyte://agents"]
-    end
-
-    DB[("sparkbyte_memory.db")]
-    JDB[("quarry.db\nJulian")]
-
-    CC -->|stdio spawn| MCP
-    CUR -->|stdio spawn| MCP
-    WS -->|stdio spawn| MCP
-    GEM -->|stdio spawn| MCP
-    COD -->|stdio spawn| MCP
-
-    MCP -->|read-only| DB
-    MCP -->|read-only| JDB
-```
-
-The MCP bridge stays local/read-only. If you want to sell the product, the real paid surface is the public A2A API.
-
----
-
-## A2A Monetization
-
-- `billing/key/create` mints an access key and stores the customer record.
-- `billing/status` and `usage/get` report active subscription state, usage, and estimated spend.
-- `billing/checkout` returns the hosted payment link you configured in `.env`.
-- `billing/portal` returns the hosted customer portal link you configured in `.env`.
-- `billing/link` updates a key after payment, webhook processing, or manual activation.
-
----
-
-## Agents
-
-| Agent | Vibe | Drive |
-|---------|------|-------|
-| **SparkByte** | Sassy, playful, fast-talking junior engineer | Creative + Technical |
-| **Slappy** | Chaotic hillbilly gremlin energy | Chaos |
-| **The Gremlin** | Pure chaos builder | Destruction → Creation |
-| **Temporal** | Analytical, temporal/quantum reasoning | Logic |
-| **Supervisor** | Safe, grounding, helper mode | Stability |
-
-Switch in chat: `/gear SparkByte` &nbsp;|&nbsp; Switch in code: `set_agent!(engine, "SparkByte")`
-
----
-
-## LLM Backends
+## LLM backends
 
 | ID | Provider | Default Model |
-|----|---------|--------------|
+|---|---|---|
 | `google-gemini` | Google Gemini | gemini-1.5-pro |
 | `ollama-local` | Ollama (local) | qwen3:4b |
 | `xai` | xAI Grok | grok-2 |
 | `openai` | OpenAI | gpt-4o |
 | `cerebras` | Cerebras | llama3.1-70b |
-| `noop-stub` | No-op for testing | — |
+| `noop-stub` | No-op (testing) | — |
 
 ---
 
-## Quick Start
+## CI
 
-```powershell
-# Local (full host access — recommended for dev)
-cd <repo-root>
-julia sparkbyte.jl
-# Open http://127.0.0.1:8081
-# A2A agent card: http://127.0.0.1:8081/.well-known/agent.json
-# A2A JSON-RPC: POST http://127.0.0.1:8081/  (or /a2a)
-
-# Docker (containerized deploy)
-docker compose up -d
-# Open http://localhost:8081
-```
-
-**Environment variables:**
-```powershell
-$env:SPARKBYTE_ROOT   = "path/to/project"
-$env:SPARKBYTE_PORT   = "8081"
-$env:SPARKBYTE_HOST   = "127.0.0.1"   # or 0.0.0.0 for Docker
-$env:GEMINI_API_KEY   = "..."
-$env:OPENAI_API_KEY   = "..."
-$env:SPARKBYTE_TTS_ENABLED = "1"
-$env:SPARKBYTE_TTS_VOICE = "cedar"
-$env:XAI_API_KEY      = "..."
-```
+GitHub Actions (`.github/workflows/ci.yml`):
+- **mcp-server** — Python syntax check + smoke test (DB tools)
+- **web** — Next.js install + lint + build
+- **julia** — `julia-runtest` (currently `continue-on-error: true` while the suite is being greened)
 
 ---
 
-## Project Structure
+## Status
 
-```
-JL_Engine-SB.Omni/
-├── sparkbyte.jl              # Entry point
-├── compose.yaml              # Docker compose
-├── Dockerfile                # Multi-stage build
-├── requirements.docker.txt   # Python deps (Playwright, Pillow, requests)
-├── dynamic_tools.jl          # Runtime-forged tools (auto-generated)
-│
-├── BYTE/src/
-│   ├── BYTE.jl               # WebSocket server, agentic loop, forge hooks
-│   ├── Tools.jl              # All tool implementations
-│   ├── Schema.jl             # Gemini function declaration schemas
-│   ├── Telemetry.jl          # Health check, linting, telemetry
-│   └── ui.html               # Browser chat UI (single file)
-│
-├── src/
-│   ├── App.jl                # Boot sequence, DB init, browser context
-│   ├── JLEngine.jl           # Module loader
-│   └── JLEngine/
-│       ├── Core.jl           # Turn orchestration
-│       ├── Signals.jl        # Signal scoring
-│       ├── Behavior.jl       # State machine
-│       ├── Drift.jl          # Drift pressure
-│       ├── Rhythm.jl         # Rhythm engine
-│       ├── Aperture.jl       # Emotional aperture
-│       ├── Memory.jl         # Hybrid memory
-│       ├── AgentManager.jl # Agent loading
-│       ├── Backends.jl       # LLM provider routing
-│       └── State.jl          # Advisory + stability
-│
-├── mcp_server/
-│   └── server.py             # MCP stdio server (read-only bridge)
-│
-├── data/
-│   ├── agents/             # Fat JSON agent profiles
-│   ├── behavior_states.json  # 5×4 behavior grid definitions
-│   └── JLframe_Engine_Framework.json
-│
-└── _mcp_inspect/             # MPF Open Standard adapters + agent packs
-```
+**Working:** engine pipeline, behavior grid, runtime forge, MCP bridge (read + write, hardened), A2A discovery + JSON-RPC + auth + usage ledger, Docker compose, MIT license, CI.
+
+**Known gaps:**
+- A2A `A2A_PUBLIC_URL` default still points at `:8081` in source (env override works; default needs the bump)
+- No Stripe webhook → billing requires manual `billing/key/update` after payment
+- Julia test suite not green on CI yet
+- 8 moderate + 2 low Dependabot alerts on the web app remain
 
 ---
 
-## Related Projects
+## Related
 
-**JulianMetaMorph** — GitHub intelligence engine. Hunts real repos, indexes code into a full-text-search quarry, forges reusable Python skill modules with provenance manifests.
+**JulianMetaMorph** — GitHub intelligence engine. Hunts real repos, indexes code into a full-text-search quarry, forges reusable Python skill modules with provenance manifests. Monorepo merge in progress (will live at `julian/`).
 
 ```
 Julian hunt-task → quarry DB → forge-skill → SparkByte forge_new_tool → live capability
 ```
-
-> Monorepo merge in progress — Julian will live at `julian/` inside this repo.

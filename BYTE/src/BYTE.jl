@@ -307,6 +307,7 @@ get_current_model()::String = _current_model
 
 function set_current_model!(model::AbstractString)
     global _current_model = String(model)
+    @async _db_write_runtime_state!("current_model", _current_model)
 end
 
 function _gemini_thinking_config(model::AbstractString)
@@ -1602,6 +1603,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
             gear_up = uppercase(args[1])
             if gear_up in ["LITE_REASONING", "EXPRESSIVE_SYNTH", "TASK_FLOW"]
                 _current_gear = gear_up
+                @async _db_write_runtime_state!("current_gear", _current_gear)
                 log_event("slash_cmd", Dict{String,Any}("cmd"=>"/gear", "value"=>gear_up, "action"=>"gear_override"))
             elseif Main.JLEngine.set_operator!(engine, string(args[1]))
                 log_operator_change(engine.current_operator_name, string(args[1]), true)
@@ -1630,6 +1632,8 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
     _active_modes  = [snapshot["rhythm"]["mode"],
                       snapshot["aperture_state"]["mode"],
                       snapshot["behavior_state"]["name"]]
+    @async _db_write_runtime_state!("current_gear", _current_gear)
+    @async _db_write_runtime_state!("active_modes", JSON.json(_active_modes))
     out_ui = Dict("type"=>"ui_update", "gear"=>uppercase(_current_gear), "modes"=>_active_modes)
     _ws_send(ws, JSON.json(out_ui)); log_ws_message_out(out_ui)
 

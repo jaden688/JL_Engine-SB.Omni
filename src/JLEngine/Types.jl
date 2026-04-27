@@ -22,8 +22,8 @@ Base.@kwdef struct EngineConfig
     root_dir::String = pwd()
     master_file::String = "JLframe_Engine_Framework.json"
     behavior_states_file::String = "behavior_states.json"
-    mpf_registry_file::String = joinpath("operators", "Operators.mpf.json")
-    operators_dir::String = "operators"
+    mpf_registry_file::String = joinpath("agents", "Agents.mpf.json")
+    operators_dir::String = "agents"
     safety_on::Bool = true
     default_operator_name::String = "SparkByte"
     history_length::Int = 20

@@ -114,7 +114,7 @@
                   - generic [ref=e164]: Sources
             - article [ref=e165]:
               - heading "Spectral Echo" [level=3] [ref=e166]
-              - paragraph [ref=e167]: Separates channel personalities so the field reveals color-phase drift.
+              - paragraph [ref=e167]: Separates channel operator profiles so the field reveals color-phase drift.
               - generic [ref=e168]:
                 - figure "RGB" [ref=e169]:
                   - img "Spectral Echo rgb" [ref=e170]

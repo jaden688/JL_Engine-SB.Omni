@@ -82,5 +82,25 @@
       "imported",
       "card-cruncher"
     ]
+  },
+  "RuntimeOperator": {
+    "agent_file": "../agents/RuntimeOperator_Full.json",
+    "default_backend_id": "google-gemini",
+    "default_memory_mode": "HYBRID",
+    "drive_type": null,
+    "tags": [
+      "imported",
+      "card-cruncher"
+    ]
+  },
+  "SarcasticWit": {
+    "agent_file": "../agents/SarcasticWit_Full.json",
+    "default_backend_id": "google-gemini",
+    "default_memory_mode": "HYBRID",
+    "drive_type": null,
+    "tags": [
+      "imported",
+      "card-cruncher"
+    ]
   }
 }

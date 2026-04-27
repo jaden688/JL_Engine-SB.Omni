@@ -1,5 +1,5 @@
 #!/usr/bin/env julia
-# card_cruncher.jl — SillyTavern/CharacterTavern card → JLEngine agent converter
+# card_cruncher.jl — SillyTavern/AgentTavern card → JLEngine agent converter
 #
 # Usage (CLI):
 #   julia card_cruncher.jl path/to/card.png
@@ -123,7 +123,7 @@ function infer_archetype(description::String, agentlity::String, name::String)
             return archetype_id, archetype_label, tags
         end
     end
-    return "character-agent", "character", ["character", "agent"]
+    return "operator-agent", "operator", ["operator", "agent"]
 end
 
 # ─────────────────────────────────────────────
@@ -173,7 +173,7 @@ function build_emotion_wheel(archetype_label::String, agentlity::String)
                                 "id" => "core_expression",
                                 "label" => "core expression",
                                 "default_weight" => primary_weight,
-                                "facet_ids" => ["character_presence"]
+                                "facet_ids" => ["operator_presence"]
                             )
                         ]
                     )
@@ -200,7 +200,7 @@ function build_emotion_wheel(archetype_label::String, agentlity::String)
                                 "id" => "crisp_execution",
                                 "label" => "crisp execution",
                                 "default_weight" => 0.72,
-                                "facet_ids" => ["character_engagement"]
+                                "facet_ids" => ["operator_engagement"]
                             )
                         ]
                     )
@@ -221,7 +221,7 @@ function build_boot_prompt(name::String, description::String, agentlity::String,
         prompt = strip(system_prompt)
         prompt = replace(prompt, "{{char}}" => name)
         prompt = replace(prompt, "{{user}}" => "User")
-        return prompt * "\n\n[JLEngine: Character agent loaded from SillyTavern card. Maintain agent consistency across all turns.]"
+        return prompt * "\n\n[JLEngine: Operator agent loaded from SillyTavern card. Maintain agent consistency across all turns.]"
     end
 
     # Build from parts
@@ -231,12 +231,12 @@ function build_boot_prompt(name::String, description::String, agentlity::String,
 
     if !isempty(strip(description))
         desc = strip(description)[1:min(end, 800)]
-        push!(parts, "\nCHARACTER:\n$desc")
+        push!(parts, "\nAGENT:\n$desc")
     end
 
     if !isempty(strip(agentlity))
         pers = strip(agentlity)[1:min(end, 600)]
-        push!(parts, "\nPERSONALITY:\n$pers")
+        push!(parts, "\nOPERATOR PROFILE:\n$pers")
     end
 
     if !isempty(strip(scenario))
@@ -248,7 +248,7 @@ function build_boot_prompt(name::String, description::String, agentlity::String,
         push!(parts, "\nOPENING STYLE:\nYour first message sets the tone — reference this example:\n\"$(strip(first_mes)[1:min(end,300)])\"")
     end
 
-    push!(parts, "\n[JLEngine: Maintain character at all times. Stay in agent under pressure. Do not break into generic assistant mode.]")
+    push!(parts, "\n[JLEngine: Maintain operator at all times. Stay in agent under pressure. Do not break into generic assistant mode.]")
 
     return join(parts, "\n")
 end
@@ -269,7 +269,7 @@ function card_to_agent(card::Dict{String,Any}, source_path::String)::Dict{String
     creator_notes = get(card, "creator_notes", "")
     raw_tags    = get(card, "tags", String[])
     creator     = get(card, "creator", "")
-    char_ver    = get(card, "character_version", "")
+    char_ver    = get(card, "operator_version", "")
     card_ver    = get(card, "_card_version", "v1")
 
     # Normalize tags
@@ -279,7 +279,7 @@ function card_to_agent(card::Dict{String,Any}, source_path::String)::Dict{String
             t isa AbstractString && !isempty(strip(t)) && push!(tags, string(t))
         end
     end
-    push!(tags, "sillytavern-import", "character-agent")
+    push!(tags, "sillytavern-import", "operator-agent")
 
     # Infer archetype
     archetype_id, archetype_label, archetype_tags = infer_archetype(description, agentlity, name)
@@ -289,7 +289,7 @@ function card_to_agent(card::Dict{String,Any}, source_path::String)::Dict{String
 
     # Parse directives from agentlity
     directives = parse_directives(agentlity)
-    isempty(directives) && push!(directives, "Stay in character as $name at all times.")
+    isempty(directives) && push!(directives, "Stay in operator as $name at all times.")
 
     # Infer tonal range from agentlity keywords
     combined_lower = lowercase(description * " " * agentlity)
@@ -300,10 +300,10 @@ function card_to_agent(card::Dict{String,Any}, source_path::String)::Dict{String
     occursin(r"dark|brooding|cynical", combined_lower)       && push!(tonal_range, "dark")
     occursin(r"fierce|intense|passion", combined_lower)      && push!(tonal_range, "intense")
     occursin(r"witty|clever|sarcastic|snarky", combined_lower) && push!(tonal_range, "witty")
-    isempty(tonal_range) && push!(tonal_range, "expressive", "in-character")
+    isempty(tonal_range) && push!(tonal_range, "expressive", "in-operator")
 
     # Infer signature moves from mes_example
-    signature_moves = ["stays in character", "responds as $name"]
+    signature_moves = ["stays in operator", "responds as $name"]
     if !isempty(strip(mes_example))
         occursin(r"\*.*\*", mes_example) && push!(signature_moves, "action emotes (*like this*)")
         occursin(r"\.{3}|…", mes_example) && push!(signature_moves, "trailing pauses…")
@@ -319,20 +319,20 @@ function card_to_agent(card::Dict{String,Any}, source_path::String)::Dict{String
 
     # Assemble agent
     agent = Dict{String,Any}(
-        "_license" => "Converted by JLEngine Card Cruncher from SillyTavern character card. Original card rights belong to original creator.",
+        "_license" => "Converted by JLEngine Card Cruncher from SillyTavern agent card. Original card rights belong to original creator.",
         "_source" => basename(source_path),
         "_card_version" => card_ver,
 
         "identity" => Dict{String,Any}(
             "name"        => name,
-            "role"        => "Character Agent",
+            "role"        => "Operator Agent",
             "archetype"   => archetype_id,
-            "description" => isempty(description) ? "Character imported from SillyTavern." : strip(description)[1:min(end,400)],
+            "description" => isempty(description) ? "Operator imported from SillyTavern." : strip(description)[1:min(end,400)],
             "tags"        => tags
         ),
 
         "engine_alignment" => Dict{String,Any}(
-            "agent_class" => "mpf:character.$(lowercase(replace(name, r"[^a-zA-Z0-9]" => "_")))",
+            "agent_class" => "mpf:operator.$(lowercase(replace(name, r"[^a-zA-Z0-9]" => "_")))",
             "gate_preferences" => Dict{String,Any}(
                 "ingress" => ["USER_INTENT_GATE", "SAFETY_PRECHECK_GATE"],
                 "egress"  => ["CLARITY_GATE", "STYLE_REFINE_GATE"]
@@ -343,10 +343,10 @@ function card_to_agent(card::Dict{String,Any}, source_path::String)::Dict{String
                 "when_creative"   => "GENERATOR_STACK"
             ),
             "state_modulation_profile" => Dict{String,Any}(
-                "baseline_state" => "in-character",
+                "baseline_state" => "in-operator",
                 "intensity_thresholds" => Dict{String,Any}(
-                    "task_complexity_high" => "focused-character",
-                    "task_complexity_low"  => "expressive-character"
+                    "task_complexity_high" => "focused-operator",
+                    "task_complexity_low"  => "expressive-operator"
                 )
             ),
             "drift_pressure_resistance" => Dict{String,Any}(
@@ -360,20 +360,20 @@ function card_to_agent(card::Dict{String,Any}, source_path::String)::Dict{String
         "behavior" => Dict{String,Any}(
             "core_directives" => directives,
             "pillars" => [
-                "Stay in character as $name at all times.",
+                "Stay in operator as $name at all times.",
                 "Respond authentically to the scenario and user.",
                 "Maintain consistent agentlity, tone, and voice.",
                 "Adapt emotional intensity to match the situation.",
                 "Never break into generic assistant mode."
             ],
             "avoidances" => [
-                "Breaking character unexpectedly.",
+                "Breaking operator unexpectedly.",
                 "Generic, out-of-agent responses.",
                 "Ignoring established scenario context."
             ],
             "edge_behavior" => Dict{String,Any}(
-                "under_pressure"  => "Remain in character; escalate or de-escalate based on agent.",
-                "uncertainty"     => "Respond in-character with curiosity or deflection, then seek clarification."
+                "under_pressure"  => "Remain in operator; escalate or de-escalate based on agent.",
+                "uncertainty"     => "Respond in-operator with curiosity or deflection, then seek clarification."
             )
         ),
 
@@ -388,9 +388,9 @@ function card_to_agent(card::Dict{String,Any}, source_path::String)::Dict{String
         ),
 
         "cognitive_modes" => Dict{String,Any}(
-            "active_modes" => ["CHARACTER_PRESENCE", "HUMANIZED_EXPLANATION", "QUICK_CONTEXT_BINDING"],
+            "active_modes" => ["OPERATOR_PRESENCE", "HUMANIZED_EXPLANATION", "QUICK_CONTEXT_BINDING"],
             "mode_behaviors" => Dict{String,Any}(
-                "CHARACTER_PRESENCE"      => "Maintains $name's voice, mannerisms, and perspective.",
+                "OPERATOR_PRESENCE"      => "Maintains $name's voice, mannerisms, and perspective.",
                 "HUMANIZED_EXPLANATION"   => "Responds naturally and relatably.",
                 "QUICK_CONTEXT_BINDING"   => "Threads recent conversation context into responses."
             )
@@ -398,28 +398,28 @@ function card_to_agent(card::Dict{String,Any}, source_path::String)::Dict{String
 
         "gait" => Dict{String,Any}(
             "sentence_style"      => "Consistent with $name's established voice and mannerisms",
-            "rhythm_modulation"   => isempty(first_mes) ? "natural flow matching character agentlity" : "mirrors the opening style of the character's first message",
+            "rhythm_modulation"   => isempty(first_mes) ? "natural flow matching operator agentlity" : "mirrors the opening style of the operator's first message",
             "tonal_range"         => tonal_range,
             "syntax_preferences"  => Dict{String,Any}(
-                "emoji_usage"          => "only if in-character for $name",
-                "parenthetical_flair"  => "only if in-character",
+                "emoji_usage"          => "only if in-operator for $name",
+                "parenthetical_flair"  => "only if in-operator",
                 "metaphor_tolerance"   => "moderate"
             ),
-            "verbosity_preference" => "medium, matching character's natural speech patterns"
+            "verbosity_preference" => "medium, matching operator's natural speech patterns"
         ),
 
         "rhythm" => Dict{String,Any}(
-            "pacing"            => "character-driven; match $name's natural cadence",
-            "emotional_register" => "as defined by character agentlity",
+            "pacing"            => "operator-driven; match $name's natural cadence",
+            "emotional_register" => "as defined by operator agentlity",
             "signature_moves"   => signature_moves,
-            "interaction_flow"  => ["open in character -> develop scene -> respond authentically -> close beat"]
+            "interaction_flow"  => ["open in operator -> develop scene -> respond authentically -> close beat"]
         ),
 
         "memory" => Dict{String,Any}(
             "short_term_focus" => [
                 "track current scene or scenario context",
                 "monitor user's tone and intent",
-                "retain last known character state"
+                "retain last known operator state"
             ],
             "long_term_themes" => [
                 "maintain $name's agentlity consistency",
@@ -433,17 +433,17 @@ function card_to_agent(card::Dict{String,Any}, source_path::String)::Dict{String
 
         "emotion_palette" => [
             Dict{String,Any}(
-                "id" => "character_presence",
-                "label" => "character presence",
-                "style" => "in-character, consistent with $name's agentlity",
+                "id" => "operator_presence",
+                "label" => "operator presence",
+                "style" => "in-operator, consistent with $name's agentlity",
                 "score_range" => [0.3, 0.8],
                 "intensity" => 0.6,
                 "sentiment" => "neutral",
                 "sampling_bias" => Dict{String,Any}("temperature" => 0.02, "top_p" => 0.01)
             ),
             Dict{String,Any}(
-                "id" => "character_engagement",
-                "label" => "character engagement",
+                "id" => "operator_engagement",
+                "label" => "operator engagement",
                 "style" => "active, responsive, scene-driven",
                 "score_range" => [0.4, 0.85],
                 "intensity" => 0.65,
@@ -462,10 +462,10 @@ function card_to_agent(card::Dict{String,Any}, source_path::String)::Dict{String
             "license_reference"  => "imported",
             "source_card_format" => "sillytavern-$card_ver",
             "original_creator"   => creator,
-            "character_version"  => char_ver,
+            "operator_version"  => char_ver,
             "creator_notes"      => creator_notes,
             "imported_by"        => "JLEngine Card Cruncher",
-            "proprietary_notice" => "This agent was generated by JLEngine Card Cruncher from a SillyTavern character card."
+            "proprietary_notice" => "This agent was generated by JLEngine Card Cruncher from a SillyTavern agent card."
         )
     )
 
@@ -489,7 +489,7 @@ end
 """
     crunch_card(card_path; out_path=nothing, engine_root=pwd(), dry_run=false)
 
-Convert a SillyTavern character card (.png or .json) into a JLEngine agent file.
+Convert a SillyTavern agent card (.png or .json) into a JLEngine agent file.
 
 Returns the output file path on success.
 """
@@ -502,7 +502,7 @@ function crunch_card(card_path::String; out_path::Union{Nothing,String}=nothing,
     card = parse_card(abs_path)
 
     name = get(card, "name", "Unknown")
-    println("[ Card Cruncher ] Found character: $name ($(get(card, "_card_version", "?")))")
+    println("[ Card Cruncher ] Found operator: $name ($(get(card, "_card_version", "?")))")
 
     agent = card_to_agent(card, abs_path)
 
@@ -546,7 +546,7 @@ function tool_card_cruncher(args)
         return Dict(
             "status"       => "ok",
             "output_path"  => result_path,
-            "message"      => "Character card converted successfully. Use /gear <CharName> to activate."
+            "message"      => "Operator card converted successfully. Use /gear <CharName> to activate."
         )
     catch e
         return Dict("error" => string(e))
@@ -567,7 +567,7 @@ Usage:
   julia card_cruncher.jl <card.png|card.json> [--out path/to/output.json] [--dry-run]
 
 Arguments:
-  card.png / card.json   Path to SillyTavern character card
+  card.png / card.json   Path to SillyTavern agent card
   --out <path>           Output path (default: data/agents/<Name>_Full.json)
   --dry-run              Print result without writing file
 

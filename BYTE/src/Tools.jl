@@ -176,6 +176,32 @@ function _db_end_session(session_id::String)
     end
 end
 
+function _db_write_runtime_state!(key::String, value::String)
+    db = _state[:db]
+    db === nothing && return
+    try
+        lock(_DB_WRITE_LOCK) do
+            SQLite.execute(db,
+                "INSERT OR REPLACE INTO runtime_state (key, value, updated_at) VALUES (?,?,?)",
+                (key, value, string(now())))
+        end
+    catch e
+        @warn "Runtime state write failed" key=key exception=(e, catch_backtrace())
+    end
+end
+
+function _db_read_runtime_state(key::String, default::String="")::String
+    db = _state[:db]
+    db === nothing && return default
+    try
+        rows = DataFrame(SQLite.DBInterface.execute(db,
+            "SELECT value FROM runtime_state WHERE key=?", (key,)))
+        return nrow(rows) > 0 ? string(rows[1, :value]) : default
+    catch
+        return default
+    end
+end
+
 # Called once at startup from BYTE.init()
 function init_tools(db::SQLite.DB, browser_context, project_root::String="")
     _state[:db] = db

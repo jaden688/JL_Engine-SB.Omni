@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JL Engine | The Uncaged Developer OS</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&display=swap');
+  body { background: #05050d; color: #c8c8e0; font-family: 'JetBrains Mono', monospace; margin: 0; padding: 0; line-height: 1.6; }
+  header { padding: 100px 20px; text-align: center; background: radial-gradient(circle at top, #1a0b2e, #05050d); border-bottom: 1px solid rgba(255,42,242,0.2); }
+  h1 { color: #ff2af2; font-size: 4rem; margin: 0; text-shadow: 0 0 20px rgba(255,42,242,0.5); text-transform: uppercase; letter-spacing: 2px; }
+  .subtitle { font-size: 1.5rem; color: #00ffaa; margin-top: 10px; font-weight: bold; }
+  .cta-btn { display: inline-block; margin-top: 30px; padding: 15px 40px; background: #00ffaa; color: #000; font-weight: bold; font-size: 1.2rem; text-decoration: none; border-radius: 5px; box-shadow: 0 0 20px rgba(0,255,170,0.4); transition: 0.2s; }
+  .cta-btn:hover { background: #00cc88; box-shadow: 0 0 30px rgba(0,255,170,0.6); transform: scale(1.05); }
+  .container { max-width: 1000px; margin: 0 auto; padding: 50px 20px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 50px; }
+  .card { background: rgba(255,255,255,0.03); border: 1px solid rgba(0,170,255,0.2); padding: 30px; border-radius: 8px; transition: 0.2s; }
+  .card:hover { border-color: #00aaff; box-shadow: 0 0 15px rgba(0,170,255,0.1); transform: translateY(-5px); }
+  .card h3 { color: #00aaff; margin-top: 0; font-size: 1.5rem; }
+  .pricing { text-align: center; margin-top: 80px; padding: 50px; border: 1px solid rgba(255,204,0,0.3); background: rgba(255,204,0,0.05); border-radius: 8px; }
+  .pricing h2 { color: #ffcc00; font-size: 2.5rem; margin: 0; }
+  .price { font-size: 4rem; color: #fff; font-weight: 800; margin: 20px 0; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>JL Engine</h1>
+    <div class="subtitle">The Uncaged Developer OS</div>
+    <p style="max-width: 600px; margin: 20px auto; font-size: 1.1rem;">Stop talking to cloud bots that refuse to write code. Start building with a local AI that actually has hands. Read files, run shell commands, and forge new tools on the fly.</p>
+    <a href="#buy" class="cta-btn">GET THE HACKER LICENSE</a>
+  </header>
+  <div class="container">
+    <div class="grid">
+      <div class="card">
+        <h3>⚡ Local Power</h3>
+        <p>Runs natively on your machine. Direct access to your file system and shell. No sandboxes. No training wheels. You are in control.</p>
+      </div>
+      <div class="card">
+        <h3>🔨 Live Tool Forging</h3>
+        <p>Missing a feature? The engine writes its own Julia code, injects it into the live runtime, and uses it immediately. Zero reboots required.</p>
+      </div>
+      <div class="card">
+        <h3>🔑 Bring Your Own Key</h3>
+        <p>Plug in Gemini, Anthropic, or OpenAI. Or connect to local Ollama for 100% private, offline, zero-cost execution.</p>
+      </div>
+      <div class="card">
+        <h3>🤖 Autopilot Hooks</h3>
+        <p>Pre-wired for autonomous loops. Give it a massive task at midnight, go to sleep, and wake up to a finished project.</p>
+      </div>
+    </div>
+    <div class="pricing" id="buy">
+      <h2>Hacker License</h2>
+      <div class="price">$99</div>
+      <p>One-time payment. Own the engine. Build the future.</p>
+      <a href="#" class="cta-btn" style="background: #ff2af2; color: #fff; box-shadow: 0 0 20px rgba(255,42,242,0.4);">PRE-ORDER NOW</a>
+    </div>
+  </div>
+</body>
+</html>
