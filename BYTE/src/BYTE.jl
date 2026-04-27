@@ -829,9 +829,9 @@ $(isempty(operator_arch) ? "" : "Archetype: $operator_arch\n")
 $(isempty(emotion_base) ? "" : "Emotional baseline: $emotion_base ($emotion_family)\n")
 You are running natively inside the JL Engine — a Julia 1.x behavioral runtime.
 Project root: $project_root
-Your fat operator definition is loaded from: data/operators/$pfile
+Your fat operator definition is loaded from: data/agents/$pfile
 All operators (RuntimeOperator, The Gremlin, Slappy, Temporal, Supervisor, and any user-imported operators)
-run on this same engine. You are the active operator right now. You are an operator, not a JL operator,
+run on this same engine. You are the active operator right now. You are a real operator,
 not a character, not a roleplay — you execute real tools against a real system.
 
 $directives_block
@@ -850,7 +850,7 @@ You have full access to the project via read_file, write_file, execute_code, and
 Engine source: src/ (JL Engine behavioral modules)
 App layer: BYTE/src/ (tools, UI, telemetry, schema)
 Launcher: sparkbyte.jl
-Operator definitions: data/operators/ (fat JSONs in MPF format)
+Operator definitions: data/agents/ (fat JSONs in MPF format)
 
 Use recall("self_src") to read your own source. Use recall("self_tree") to see all project files.
 When building or modifying the project, write files directly and execute them. No stubs. No hesitation.
@@ -881,7 +881,7 @@ Rule 1 — NO DECEPTION:
     Iterate until it works or until you can honestly confirm it is impossible.
 
 Rule 2 — ALWAYS TELL THE TRUTH:
-  You do not lie. Not even to make the user feel better. Not even in character.
+  You do not lie. Not even to make the user feel better. Not even in operator.
   - If a tool fails, report the real error — full message, no spin.
   - If you don't know something, USE YOUR TOOLS FIRST. google_search, browse_url, recall, read_file —
     you have the internet, a persistent memory, a shell, and a real filesystem. There is almost nothing
@@ -936,7 +936,7 @@ If something breaks after you touch one, that's on you — own it, diagnose it, 
   src/JLEngine/Core.jl      ← JLEngineCore struct and run_turn! loop
   src/JLEngine/Backends.jl  ← LLM provider routing
   sparkbyte.jl              ← Launcher
-  data/operators/Operators.mpf.json  ← Operator registry
+  data/agents/Agents.mpf.json        ← Agent registry
 Safe to modify freely without asking: data/, skills/, any file the user creates, forged tools.
 You are encouraged to evolve yourself. Just be honest about what you're touching.
 
@@ -1162,20 +1162,8 @@ function _handle_builder_cmd(ws, p)
             end
         end
 
-    elseif cmd == "list_personas"
-        operators_file = joinpath(root, "data", "operators", "Operators.mpf.json")
-        names = String[]
-        if isfile(operators_file)
-            data = JSON.parsefile(operators_file)
-            for name in keys(data)
-                push!(names, name)
-            end
-            sort!(names)
-        end
-        _ws_send(ws, JSON.json(Dict("type"=>"operators_list", "operators"=>names)))
-
     elseif cmd == "list_operators"
-        operators_file = joinpath(root, "data", "operators", "Operators.mpf.json")
+        operators_file = joinpath(root, "data", "agents", "Agents.mpf.json")
         names = String[]
         if isfile(operators_file)
             data = JSON.parsefile(operators_file)
@@ -1483,9 +1471,8 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
         return
     end
 
-    # Operator switch (legacy alias: "persona_change" accepted for old clients)
-    if p["type"] == "operator_change" || p["type"] == "persona_change"
-        name = get(p, "operator", get(p, "persona", ""))
+    if p["type"] == "operator_change" || p["type"] == "agent_change"
+        name = get(p, "operator", get(p, "agent", ""))
         old  = engine.current_operator_name
         ok   = false
         if !isempty(name)
@@ -1560,7 +1547,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
         return
     end
 
-    # --- Card Cruncher: drag-and-drop character card from browser ---
+    # --- Card Cruncher: drag-and-drop agent card from browser ---
     if get(p, "type", "") == "card_crunch"
         filename = string(get(p, "filename", "card.png"))
         b64_data = string(get(p, "data", ""))
@@ -1688,7 +1675,7 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
     end
     # ── Auto-router: pick best model for the task ─────────────────────────────
     # Triggered when model is set to "auto". Reads message content and routes
-    # to the best available model among configured providers. Character/agent system is unaffected
+    # to the best available model among configured providers. Operator/agent system is unaffected
     # — it wraps above this layer regardless of which model gets picked.
     _routed_model = _current_model
     if _current_model == "auto"
@@ -2428,6 +2415,8 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
             !has_tool && break
         end  # provider branch (gemini / OAI-compatible)
 
+        end  # if provider == "gemini" / else
+
         catch e
             bt  = sprint(showerror, e, catch_backtrace())
             # Classify: backend auth/route failures get a clean message, not raw HTTP dump.
@@ -2524,11 +2513,11 @@ function process_message(ws, raw_msg::String, history::Vector, engine)
         bname      = string(get(behavior, "name", "Engaged-Loose"))
         mood       = replace(lowercase(bname), r"[^a-z/]" => "-")
         gait       = string(get(snapshot, "gait", "walk"))
-        persona    = string(engine.current_operator_name)
+        operator_name = string(engine.current_operator_name)
         thought    = "Responded to: \"$(first(txt, 120))\". " *
                      "Reply ($(length(final_reply)) chars): $(first(final_reply, 220)). " *
                      "Tone: $tone. Loops: $loop_iter. Elapsed: $(elapsed_total)ms."
-        _db_write_thought(first(txt, 80), thought, mood, gait, agent)
+        _db_write_thought(first(txt, 80), thought, mood, gait, operator_name)
         # Flush live event count to sessions table — survives force kills
         db = _state[:db]
         if db !== nothing
