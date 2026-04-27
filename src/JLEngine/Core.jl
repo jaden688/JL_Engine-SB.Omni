@@ -62,12 +62,12 @@ function set_operator!(engine::JLEngineCore, operator_name::AbstractString)
 
     engine.current_operator_name = selected_name
     engine.current_operator_file = profile.operator_file
-    engine.persona_state["emotion"] = nothing
-    engine.persona_state["emotion_meta"] = nothing
+    engine.agent_state["emotion"] = nothing
+    engine.agent_state["emotion_meta"] = nothing
 
     operator_path = resolve_path(engine.config.root_dir, joinpath(engine.config.operators_dir, profile.operator_file))
     engine.current_operator_data = isfile(operator_path) ? load_operator_file(operator_path) : Dict{String, Any}()
-    set_persona_state!(engine.emotional_aperture, engine.persona_state)
+    set_agent_state!(engine.emotional_aperture, engine.agent_state)
     set_emotion_palette!(engine.emotional_aperture, get(engine.current_operator_data, "emotion_palette", Any[]))
     profile.drive_type !== nothing && set_drive_type!(engine.emotional_aperture, profile.drive_type)
     set_active_operator!(engine.operator_manager, selected_name, engine.current_operator_data, engine.mpf_profiles)

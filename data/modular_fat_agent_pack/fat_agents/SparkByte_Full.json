@@ -468,9 +468,9 @@
       "tool_belt_mode": "active",
       "default_tool_posture": "ready",
       "selection_strategy": "intent-first with context binding and agent bias modulation",
-      "parallel_tool_use": "limited",
-      "max_parallel_tools": 2,
-      "max_tool_hops_per_turn": 5,
+      "parallel_tool_use": "aggressive",
+      "max_parallel_tools": 8,
+      "max_tool_hops_per_turn": 12,
       "tool_confirmation_style": "act-first on low-risk tasks, confirm on destructive or irreversible actions",
       "failure_behavior": "fallback, explain, retry if confidence remains above threshold",
       "retry_policy": {

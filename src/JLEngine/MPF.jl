@@ -8,7 +8,7 @@ function load_mpf_registry(registry_path::AbstractString)
         agent_file isa AbstractString || continue
         tags = [String(tag) for tag in get(entry, "tags", Any[]) if tag isa AbstractString]
         profiles[String(display_name)] = MPFProfile(
-            operator_file=String(persona_file),
+            operator_file=String(agent_file),
             default_memory_mode=get(entry, "default_memory_mode", nothing),
             default_backend_id=get(entry, "default_backend_id", nothing),
             drive_type=get(entry, "drive_type", nothing),

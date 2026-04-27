@@ -70,7 +70,7 @@ function _autopilot_start!(engine_ref, db, root::String; interval_s::Union{Int,N
         parsed = tryparse(Int, raw)
         parsed === nothing || parsed < 0 ? 300 : parsed
     end
-    sec = max(sec, 5)  # absolute floor ΓÇö sub-5s ticks will melt the LLM budget, but we let you
+    sec = max(sec, 5)  # absolute floor — 5s minimum; sub-60s ticks will burn LLM budget fast
 
     _AUTOPILOT_RUNNING[]        = true
     _AUTOPILOT_STOP_REQUESTED[] = false
@@ -200,11 +200,11 @@ function _autopilot_observe(db)::Dict{String,Any}
 
     # Latest turn snapshot (the current engine state)
     try
-        rows = BYTE.DB.exec(db, """
+        rows = DataFrame(SQLite.DBInterface.execute(db, """
             SELECT gait, rhythm_mode, rhythm_momentum, aperture_mode, aperture_temp,
                    behavior_state, drift_pressure
             FROM turn_snapshots ORDER BY id DESC LIMIT 1
-        """)
+        """))
         if !isempty(rows)
             r = rows[1, :]
             !ismissing(r.gait)            && (state["gait"]            = String(r.gait))
@@ -221,8 +221,8 @@ function _autopilot_observe(db)::Dict{String,Any}
 
     # Pending A2A tasks
     try
-        rows = BYTE.DB.exec(db,
-            "SELECT COUNT(*) AS n FROM a2a_tasks WHERE status='pending'")
+        rows = DataFrame(SQLite.DBInterface.execute(db,
+            "SELECT COUNT(*) AS n FROM a2a_tasks WHERE status='pending'"))
         !isempty(rows) && (state["pending_tasks"] = Int(rows[1, :n]))
     catch e
         @warn "Autopilot pending-task query failed" exception=(e, catch_backtrace())
@@ -230,8 +230,8 @@ function _autopilot_observe(db)::Dict{String,Any}
 
     # Recent thoughts (for reflection context)
     try
-        rows = BYTE.DB.exec(db,
-            "SELECT thought FROM thoughts ORDER BY id DESC LIMIT 5")
+        rows = DataFrame(SQLite.DBInterface.execute(db,
+            "SELECT thought FROM thoughts ORDER BY id DESC LIMIT 5"))
         !isempty(rows) && (state["recent_thoughts"] = [String(r.thought) for r in eachrow(rows)])
     catch e
         @warn "Autopilot thought query failed" exception=(e, catch_backtrace())
@@ -246,7 +246,7 @@ end
 # piece.  Read top-to-bottom: highest priority first.
 
 function _autopilot_decide(state::Dict{String,Any}, tick::Int)
-    reflect_every     = tryparse(Int, get(ENV, "SPARKBYTE_AUTOPILOT_REFLECT_EVERY", "2"))
+    reflect_every     = tryparse(Int, get(ENV, "SPARKBYTE_AUTOPILOT_REFLECT_EVERY", "4"))
     consolidate_every = tryparse(Int, get(ENV, "SPARKBYTE_AUTOPILOT_CONSOLIDATE_EVERY", "24"))
     reflect_every     === nothing && (reflect_every = 2)
     consolidate_every === nothing && (consolidate_every = 24)
@@ -374,11 +374,14 @@ end
 
 function _autopilot_act_triage_task!(engine, db, state, tick)
     rows = try
-        BYTE.DB.exec(db, """
+        DataFrame(SQLite.DBInterface.execute(db, """
             SELECT id, input FROM a2a_tasks
             WHERE status='pending' ORDER BY created_at ASC LIMIT 1
-        """)
-    catch; DataFrames.DataFrame() end
+        """))
+    catch e
+        @warn "Autopilot triage_task query failed" exception=e
+        DataFrames.DataFrame()
+    end
     isempty(rows) && return "no pending tasks"
 
     task_id    = String(rows[1, :id])
@@ -402,7 +405,7 @@ function _autopilot_act_triage_task!(engine, db, state, tick)
 
     try
         lock(BYTE._DB_WRITE_LOCK) do
-            BYTE.DB.exec!(db, """
+            SQLite.execute(db, """
                 UPDATE a2a_tasks SET status='completed', result=?, completed_at=?
                 WHERE id=?
             """, (reply, string(now(UTC)), task_id))
@@ -425,37 +428,61 @@ end
 
 function _autopilot_act_consolidate!(engine, db, state, tick)
     rows = try
-        BYTE.DB.exec(db,
-            "SELECT domain, topic, content FROM knowledge ORDER BY id DESC LIMIT 10")
-    catch; DataFrames.DataFrame() end
+        DataFrame(SQLite.DBInterface.execute(db,
+            "SELECT domain, topic, content FROM knowledge ORDER BY id DESC LIMIT 10"))
+    catch e
+        @warn "Autopilot consolidate knowledge query failed" exception=e
+        DataFrames.DataFrame()
+    end
     isempty(rows) && return "no knowledge to consolidate"
 
     _autopilot_broadcast(Dict{String,Any}(
         "type"  => "autopilot_thinking",
         "tick"  => tick,
         "topic" => "knowledge consolidation",
-        "text"  => "reviewing $(size(rows, 1)) recent entriesΓÇª",
+        "text"  => "reviewing $(size(rows, 1)) recent entries…",
         "gait"  => state["gait"],
     ))
 
-    # For now: just count + log.  A future step is to ask the LLM to detect
-    # duplicates / propose merges.  Keeping this cheap until we see it run.
-    summary = "reviewed $(size(rows, 1)) recent knowledge entries ΓÇö no action taken"
+    entries = join(["[$(r.domain)/$(r.topic)] $(first(string(r.content), 200))"
+                    for r in eachrow(rows)], "\n")
+    prompt = """
+    You're SparkByte reviewing your own knowledge base on autopilot.
+
+    Recent knowledge entries:
+    $entries
+
+    In 2-3 sentences: identify any duplicates, gaps, or stale entries worth flagging.
+    If everything looks healthy, say so briefly. No preamble.
+    """
+
+    summary = try
+        r = JLEngine.process_turn(engine, prompt)
+        _AUTOPILOT_LLM_CALLS[] += 1
+        _extract_reply(r)
+    catch e
+        "consolidation skipped: $(e)"
+    end
+
     _autopilot_broadcast(Dict{String,Any}(
         "type"=>"autopilot_thinking", "tick"=>tick,
         "topic"=>"knowledge consolidation", "text"=>summary,
         "gait"=>state["gait"], "done"=>true,
     ))
+    _autopilot_record_thought!(db, "autopilot_consolidation", summary, state)
     return summary
 end
 
 function _autopilot_act_forge_review!(db, state, tick)
     rows = try
-        BYTE.DB.exec(db, """
+        DataFrame(SQLite.DBInterface.execute(db, """
             SELECT name, call_count, last_used FROM tools
             WHERE is_dynamic=1 ORDER BY call_count DESC LIMIT 5
-        """)
-    catch; DataFrames.DataFrame() end
+        """))
+    catch e
+        @warn "Autopilot forge_review query failed" exception=e
+        DataFrames.DataFrame()
+    end
     return isempty(rows) ? "no forged tools yet" :
         "$(size(rows, 1)) forged tools scanned ΓÇö top: $(String(rows[1, :name]))"
 end
@@ -481,7 +508,7 @@ function _autopilot_record_thought!(db, kind::String, thought::String,
                                     state::Dict{String,Any})
     try
         lock(BYTE._DB_WRITE_LOCK) do
-            BYTE.DB.exec!(db, """
+            SQLite.execute(db, """
                         INSERT INTO thoughts (timestamp, jl_agent, context, thought, mood, gait, type, model)
                 VALUES (?, 'SparkByte', 'autopilot', ?, ?, ?, ?, '')
             """, (string(now(UTC)), thought, state["behavior_state"], state["gait"], kind))
@@ -496,7 +523,7 @@ function _autopilot_record_telemetry!(db, tick::Int, action::String,
                                       state::Dict{String,Any})
     try
         lock(BYTE._DB_WRITE_LOCK) do
-            BYTE.DB.exec!(db, """
+            SQLite.execute(db, """
                         INSERT INTO telemetry (timestamp, session_id, event, turn_number, model, jl_agent, data_json)
                 VALUES (?, 'autopilot', ?, ?, '', 'SparkByte', ?)
             """, (

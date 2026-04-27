@@ -1,0 +1,67 @@
+{
+  "helper_id": "feature_extraction_detector",
+  "type": "quick_helper",
+  "purpose": "detect models that can produce embeddings or latent feature vectors",
+  "max_steps": 2,
+  "signals": [
+    "pipeline",
+    "tags",
+    "library",
+    "base_model",
+    "deploy:azure",
+    "text-embeddings-inference"
+  ],
+  "detection_rules": {
+    "pipeline_direct": [
+      "feature-extraction",
+      "image-feature-extraction"
+    ],
+    "pipeline_adjacent": [
+      "sentence-similarity"
+    ],
+    "tag_signals": [
+      "feature-extraction",
+      "embedding",
+      "multimodal embedding",
+      "text-embeddings-inference"
+    ]
+  },
+  "subtype_map": {
+    "text_embedding": {
+      "pipeline": ["feature-extraction", "sentence-similarity"],
+      "library_hints": ["sentence-transformers", "transformers"],
+      "julian_metamorph_roles": ["edge_text_encoder", "high_power_text_encoder", "balanced_text_encoder", "semantic_similarity_encoder"]
+    },
+    "image_embedding": {
+      "pipeline": ["image-feature-extraction"],
+      "julian_metamorph_roles": ["image_feature_encoder"]
+    },
+    "multimodal_embedding": {
+      "tag_hints": ["multimodal embedding"],
+      "pipeline_hints": ["image-text-to-text"],
+      "julian_metamorph_roles": ["multimodal_embedding_encoder", "vision_text_feature_bridge"]
+    },
+    "latent_feature_encoder": {
+      "tag_hints": ["robotics", "openvla"],
+      "julian_metamorph_roles": ["robotics_multimodal_feature_bridge"]
+    }
+  },
+  "known_role_assignments": {
+    "Xenova/all-MiniLM-L6-v2": "edge_text_encoder",
+    "sentence-transformers/all-MiniLM-L6-v2": "edge_text_encoder",
+    "Qwen/Qwen3-Embedding-8B": "high_power_text_encoder",
+    "Qwen/Qwen3-Embedding-4B": "balanced_text_encoder",
+    "BAAI/bge-small-zh-v1.5": "chinese_text_encoder",
+    "facebook/dinov2-base": "image_feature_encoder",
+    "Qwen/Qwen3-VL-Embedding-2B": "multimodal_embedding_encoder",
+    "sentence-transformers/paraphrase-mpnet-base-v2": "semantic_similarity_encoder",
+    "deepseek-ai/DeepSeek-OCR": "vision_text_feature_bridge",
+    "openvla/openvla-7b": "robotics_multimodal_feature_bridge"
+  },
+  "outputs": [
+    "is_feature_extractor",
+    "feature_subtype",
+    "confidence",
+    "julian_metamorph_role"
+  ]
+}

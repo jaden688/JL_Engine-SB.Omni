@@ -792,7 +792,7 @@ function _a2a_push_config_row_to_dict(r)::Dict{String,Any}
     auth = Dict{String,Any}()
     if !ismissing(r.authentication_json) && !isempty(strip(String(r.authentication_json)))
         parsed_auth = try JSON.parse(String(r.authentication_json)) catch; nothing end
-        parsed_auth isa Dict && (auth = Dict{String,Any}(parsed_auth))
+        parsed_auth isa AbstractDict && (auth = Dict{String,Any}(string(k) => v for (k, v) in pairs(parsed_auth)))
     end
     return Dict{String,Any}(
         "id" => string(r.id),

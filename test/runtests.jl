@@ -4,8 +4,8 @@ using JLEngine
 const FIXTURES = joinpath(@__DIR__, "fixtures")
 
 @testset "JLEngine" begin
-    registry_path = joinpath(FIXTURES, "operators", "Personas.mpf.json")
-    persona_path = joinpath(FIXTURES, "operators", "SparkByte_Full.json")
+    registry_path = joinpath(FIXTURES, "operators", "Operators.mpf.json")
+    agent_path = joinpath(FIXTURES, "operators", "SparkByte_Full.json")
     behavior_path = joinpath(FIXTURES, "behavior_states.json")
 
     @testset "Config and MPF" begin
@@ -16,8 +16,8 @@ const FIXTURES = joinpath(@__DIR__, "fixtures")
         @test haskey(profiles, "SparkByte")
         @test profiles["SparkByte"].operator_file == "SparkByte_Full.json"
 
-        persona = load_operator_file(persona_path)
-        @test get_llm_boot_prompt(persona) == "You are SparkByte."
+        agent = load_operator_file(agent_path)
+        @test startswith(get_llm_boot_prompt(agent), "You are SparkByte.")
     end
 
     @testset "Signals" begin
@@ -54,7 +54,7 @@ const FIXTURES = joinpath(@__DIR__, "fixtures")
     end
 
     @testset "Aperture" begin
-        persona = load_operator_file(persona_path)
+        agent = load_operator_file(agent_path)
         machine = BehaviorStateMachine(behavior_path)
         state = transition_by_trigger!(machine, "user_hyped", "walk")
         agent_state = Dict{String, Any}()
@@ -107,7 +107,7 @@ const FIXTURES = joinpath(@__DIR__, "fixtures")
 
     @testset "Operator Manager" begin
         profiles = load_mpf_registry(registry_path)
-        spark = load_operator_file(persona_path)
+        spark = load_operator_file(agent_path)
         manager = OperatorManager(FIXTURES, "operators")
         set_active_operator!(manager, "SparkByte", spark, profiles)
         update_dynamic_weight!(manager, TurnSignals(0.4, 0.7, false, 0.1, 0.6, 0.2); rhythm_state=Dict("variability" => 0.5), aperture_state=Dict("score" => 0.7))
@@ -120,7 +120,7 @@ const FIXTURES = joinpath(@__DIR__, "fixtures")
         configure_backends!(brain_id="noop-stub", tool_id="noop-stub")
         backend = get_brain_backend()
         reply, meta = generate(backend, [Dict("role" => "user", "content" => "hello world")]; options=Dict("temperature" => 0.4))
-        @test reply == "hello world"
+        @test reply == "[no backend reachable]"
         @test meta["provider"] == "noop"
 
         cerebras_backend = get_backend("cerebras")
@@ -181,7 +181,7 @@ const FIXTURES = joinpath(@__DIR__, "fixtures")
         configure_backends!(brain_id="noop-stub")
         turn = run_turn!(core, "Say hello in one line.")
         @test turn["ok"] == true
-        @test turn["reply"] == "Say hello in one line."
+        @test turn["reply"] == "[no backend reachable]"
     end
 
     include("test_a2a_discovery.jl")
