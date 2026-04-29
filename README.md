@@ -211,7 +211,6 @@ GitHub Actions (`.github/workflows/ci.yml`):
 **Working:** engine pipeline, behavior grid, runtime forge, MCP bridge (read + write, hardened), A2A discovery + JSON-RPC + auth + usage ledger, Docker compose, MIT license, CI.
 
 **Known gaps:**
-- A2A `A2A_PUBLIC_URL` default still points at `:8081` in source (env override works; default needs the bump)
 - No Stripe webhook → billing requires manual `billing/key/update` after payment
 - Julia test suite not green on CI yet
 - 8 moderate + 2 low Dependabot alerts on the web app remain

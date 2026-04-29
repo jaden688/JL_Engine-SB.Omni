@@ -21,7 +21,7 @@ using Dates
 
 const A2A_PORT        = parse(Int, get(ENV, "A2A_PORT", "8082"))
 const A2A_HOST        = get(ENV, "A2A_HOST", "0.0.0.0")
-const A2A_PUBLIC_URL  = get(ENV, "A2A_PUBLIC_URL", "http://localhost:8081")
+const A2A_PUBLIC_URL  = get(ENV, "A2A_PUBLIC_URL", "http://localhost:8082")
 const A2A_AGENT_NAME  = get(ENV, "A2A_AGENT_NAME", "JL Engine")
 const A2A_VERSION     = "1.1.0"
 const A2A_PROTOCOL_VERSION = get(ENV, "A2A_PROTOCOL_VERSION", "1.0")
