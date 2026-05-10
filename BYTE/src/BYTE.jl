@@ -2545,7 +2545,9 @@ function launch(port::Int=8081)
     url = "http://localhost:$port"
     cmd = if Sys.iswindows()
         chrome = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
-        isfile(chrome) ? `cmd /c start "" "$chrome" --app=$url` : `cmd /c start $url`
+        isfile(chrome) ?
+            `powershell -NoProfile -Command "Start-Process -FilePath '$chrome' -ArgumentList '--app=$url'"` :
+            `powershell -NoProfile -Command "Start-Process '$url'"`
     elseif Sys.isapple()
         `open $url`
     else
