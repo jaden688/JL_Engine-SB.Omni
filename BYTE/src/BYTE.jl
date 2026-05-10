@@ -2543,11 +2543,12 @@ Open Chrome pointed at the app. Falls back to system default browser.
 """
 function launch(port::Int=8081)
     url = "http://localhost:$port"
+    app_arg = "--app=$url"
     cmd = if Sys.iswindows()
         chrome = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
         isfile(chrome) ?
-            `powershell -NoProfile -Command "param([string]\$Target,[string]\$ChromePath) Start-Process -FilePath \$ChromePath -ArgumentList @('--app=' + \$Target)" -- $url $chrome` :
-            `powershell -NoProfile -Command "param([string]\$Target) Start-Process -FilePath \$Target" -- $url`
+            `powershell -NoProfile -Command "param([string]\$ChromePath,[string]\$AppArg) Start-Process -FilePath \$ChromePath -ArgumentList @(\$AppArg)" -- $chrome $app_arg` :
+            `powershell -NoProfile -Command "param([string]\$TargetUrl) Start-Process -FilePath \$TargetUrl" -- $url`
     elseif Sys.isapple()
         `open $url`
     else
