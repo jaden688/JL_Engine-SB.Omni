@@ -1,6 +1,6 @@
 # JL Engine — SparkByte Omni
 
-A Julia-native AI operator engine with a real-time behavioral control layer. Not a chatbot wrapper — a middleware system that models conversation state as a dynamic behavioral machine before any LLM ever sees your message.
+A Julia-native AI operator engine with a real-time behavioral control layer that models conversation state as a dynamic behavioral machine before any LLM ever sees your message.
 
 **Live UI:** `http://127.0.0.1:8081` &nbsp;|&nbsp; **A2A:** `http://127.0.0.1:8082` &nbsp;|&nbsp; **Entry:** `julia sparkbyte.jl` &nbsp;|&nbsp; **License:** MIT
 
