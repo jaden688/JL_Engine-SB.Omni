@@ -22,9 +22,9 @@ function _ensure_project_setup!()
     project_toml = abspath(joinpath(@__DIR__, "Project.toml"))
     if _active_project_path() != project_toml && !_env_true("SPARKBYTE_SKIP_PKG_SETUP")
         Pkg.activate(@__DIR__)
-        if !_env_true("SPARKBYTE_SKIP_PKG_INSTANTIATE")
-            Pkg.instantiate()
-        end
+    end
+    if !_env_true("SPARKBYTE_SKIP_PKG_INSTANTIATE")
+        Pkg.instantiate()
     end
 end
 
