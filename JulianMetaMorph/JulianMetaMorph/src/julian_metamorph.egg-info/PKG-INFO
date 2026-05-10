@@ -7,6 +7,7 @@ Description-Content-Type: text/markdown
 Requires-Dist: fastapi>=0.110.0
 Requires-Dist: requests>=2.31.0
 Requires-Dist: uvicorn>=0.30.0
+Requires-Dist: httpx>=0.28.0
 
 # Julian MetaMorph
 
@@ -34,7 +35,13 @@ python -m julian_metamorph.cli search-repos "oauth token python"
 python -m julian_metamorph.cli ingest-repo psf/requests --max-files 20
 python -m julian_metamorph.cli scout-task "session cookie auth flow"
 python -m julian_metamorph.cli forge-skill auth_capsule "session cookie auth flow"
+python -m julian_metamorph.cli splash-garden "unseen vision radar" --out data/splash_garden.png --delay-out data/splash_garden_delay.png
+python -m julian_metamorph.cli splash-garden-bench "unseen vision radar" --out-dir data/splash_garden_bench
+python -m julian_metamorph.cli serve
 ```
+
+The bench now emits an `index.html` report with RGB, delay, source-map, and channel plates for each case.
+The live viewer is available at `http://127.0.0.1:8765/ripple-scope` while the service is running.
 
 ## Click launcher
 
@@ -53,3 +60,7 @@ $env:GITHUB_TOKEN = "ghp_..."
 - SQLite quarry: `data/quarry.db`
 - Forged skill modules: `skills/`
 - Provenance manifests: `skills/*.json`
+- Splash Garden renders: `data/splash_garden*.png`
+- Splash Garden benches: `data/splash_garden_bench/`
+- Splash Garden report: `data/splash_garden_bench/index.html`
+- Ripple Scope live outputs: `data/live/`

@@ -17,6 +17,17 @@ The MCP bridge is the local/dev surface. The A2A API is the paid surface.
 
 ---
 
+
+## Deployment
+
+Deployment runbook, cloud assumptions, smoke tests, rollback notes, and verified gates live in [`README_DEPLOY.md`](README_DEPLOY.md).
+
+```bash
+cp .env.example .env
+docker compose up --build -d
+scripts/smoke_endpoints.sh
+```
+
 ## Quick start
 
 ```bash
