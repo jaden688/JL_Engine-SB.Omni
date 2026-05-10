@@ -2,6 +2,7 @@ README.md
 pyproject.toml
 src/julian_metamorph/__init__.py
 src/julian_metamorph/cli.py
+src/julian_metamorph/curiosity.py
 src/julian_metamorph/forge.py
 src/julian_metamorph/github_client.py
 src/julian_metamorph/license_gate.py
@@ -10,6 +11,7 @@ src/julian_metamorph/profile.py
 src/julian_metamorph/quarry.py
 src/julian_metamorph/scout.py
 src/julian_metamorph/service.py
+src/julian_metamorph/splash_garden.py
 src/julian_metamorph.egg-info/PKG-INFO
 src/julian_metamorph.egg-info/SOURCES.txt
 src/julian_metamorph.egg-info/dependency_links.txt
@@ -18,3 +20,4 @@ src/julian_metamorph.egg-info/requires.txt
 src/julian_metamorph.egg-info/top_level.txt
 tests/test_julian_metamorph.py
 tests/test_service.py
+tests/test_splash_garden.py

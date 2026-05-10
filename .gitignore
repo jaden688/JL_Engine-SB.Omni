@@ -128,3 +128,9 @@ boot_stdout.txt
 boot_stderr.txt
 live_boot.txt
 full_telemetry.jsonl
+
+# Node / Next.js local artifacts
+node_modules/
+.next/
+out/
+*.tsbuildinfo

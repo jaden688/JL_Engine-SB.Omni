@@ -147,8 +147,16 @@ end
 
 function _start_browser_context()
     println("👁️  Initializing Web Eyes...")
-    sync_playwright = pyimport("playwright.sync_api").sync_playwright
-    pw_instance = sync_playwright().__enter__()
+    require_browser = _looks_true(get(ENV, "SPARKBYTE_REQUIRE_BROWSER", "0"))
+    sync_playwright = try
+        pyimport("playwright.sync_api").sync_playwright
+    catch e
+        require_browser && rethrow()
+        @warn "Playwright unavailable; browser tools disabled" exception=(e, catch_backtrace())
+        return (; pw_manager=nothing, pw_instance=nothing, browser=nothing, browser_context=nothing)
+    end
+    pw_manager = sync_playwright()
+    pw_instance = pw_manager.__enter__()
 
     # Persistent profile so cookies / captcha solves / login state survive restarts.
     # Realistic UA + viewport + locale to defeat trivial bot fingerprinting.
@@ -171,15 +179,26 @@ function _start_browser_context()
         "--disable-features=IsolateOrigins,site-per-process",
     ])
 
-    browser_context = pw_instance.chromium.launch_persistent_context(
-        user_data_dir,
-        headless=true,
-        user_agent=ua,
-        locale="en-US",
-        timezone_id="America/New_York",
-        viewport=pydict(Dict("width" => 1920, "height" => 1080)),
-        args=launch_args,
-    )
+    browser_context = try
+        pw_instance.chromium.launch_persistent_context(
+            user_data_dir,
+            headless=true,
+            user_agent=ua,
+            locale="en-US",
+            timezone_id="America/New_York",
+            viewport=pydict(Dict("width" => 1920, "height" => 1080)),
+            args=launch_args,
+        )
+    catch e
+        try
+            pw_manager.__exit__(nothing, nothing, nothing)
+        catch exit_err
+            @warn "Playwright cleanup after failed launch also failed" exception=(exit_err, catch_backtrace())
+        end
+        require_browser && rethrow()
+        @warn "Playwright Chromium failed to launch; browser tools disabled" exception=(e, catch_backtrace())
+        return (; pw_manager=nothing, pw_instance=nothing, browser=nothing, browser_context=nothing)
+    end
 
     # Stealth: strip webdriver flag + common automation tells before any page load.
     stealth_js = """
@@ -196,7 +215,7 @@ function _start_browser_context()
 
     # browser handle kept as the context itself so shutdown_cleanly! can close it.
     browser = browser_context
-    return (; pw_instance, browser, browser_context)
+    return (; pw_manager, pw_instance, browser, browser_context)
 end
 
 # Module-level state for clean shutdown. Set on boot, consumed by shutdown_cleanly!.
@@ -225,15 +244,19 @@ function shutdown_cleanly!()
     # IMPORTANT: do NOT use @warn or format exception backtraces here.
     # Python objects in the exception payload cause GC walks across task
     # boundaries during exit(), which segfaults. Plain println only.
-    try
-        bs.browser.close()
-    catch
-        println(stderr, "[shutdown_cleanly!] browser.close() raised (ignored)")
+    if getproperty(bs, :browser) !== nothing
+        try
+            bs.browser.close()
+        catch
+            println(stderr, "[shutdown_cleanly!] browser.close() raised (ignored)")
+        end
     end
-    try
-        bs.pw_instance.__exit__(nothing, nothing, nothing)
-    catch
-        println(stderr, "[shutdown_cleanly!] pw_instance.__exit__ raised (ignored)")
+    if hasproperty(bs, :pw_manager) && getproperty(bs, :pw_manager) !== nothing
+        try
+            bs.pw_manager.__exit__(nothing, nothing, nothing)
+        catch
+            println(stderr, "[shutdown_cleanly!] pw_manager.__exit__ raised (ignored)")
+        end
     end
 end
 
