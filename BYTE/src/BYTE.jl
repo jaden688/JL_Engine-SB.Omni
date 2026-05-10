@@ -2547,8 +2547,8 @@ function launch(port::Int=8081)
     cmd = if Sys.iswindows()
         chrome = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
         isfile(chrome) ?
-            `powershell -NoProfile -Command "& { param([string]\$ChromePath,[string]\$AppArg) Start-Process -FilePath \$ChromePath -ArgumentList @(\$AppArg) }" $chrome $app_arg` :
-            `powershell -NoProfile -Command "& { param([string]\$TargetUrl) Start-Process -FilePath \$TargetUrl }" $url`
+            `powershell -NoProfile -ExecutionPolicy Bypass -Command "& { param([string]\$ChromePath,[string]\$AppArg) Start-Process -FilePath \$ChromePath -ArgumentList @(\$AppArg) }" $chrome $app_arg` :
+            `powershell -NoProfile -ExecutionPolicy Bypass -Command "& { param([string]\$TargetUrl) Start-Process -FilePath \$TargetUrl }" $url`
     elseif Sys.isapple()
         `open $url`
     else
