@@ -32,7 +32,7 @@ scripts/smoke_endpoints.sh
 
 ```bash
 # Local
-julia sparkbyte.jl
+julia --project=. sparkbyte.jl
 # UI:      http://127.0.0.1:8081
 # A2A:     http://127.0.0.1:8082/.well-known/agent.json
 # MCP:     stdio (registered via Claude Desktop config) or http on :8083
